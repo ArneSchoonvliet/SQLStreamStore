@@ -68,7 +68,7 @@ namespace build
                             $"test tests/{project}/{project}.csproj --configuration=Release --no-build --no-restore --verbosity=normal");
 
                     if(!string.IsNullOrWhiteSpace(rid))
-                        builder.Append($" --runtime={rid}");
+                        builder.Append($" -r {rid}");
 
                     builder.Append($" --logger \"trx;logfilename=..\\..\\..\\{ArtifactsDir}\\{project}.trx\"");
 
