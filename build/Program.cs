@@ -61,7 +61,7 @@ namespace build
                 try
                 {
                     Run("dotnet",
-                        $"test tests/{project}/{project}.csproj --configuration=Release --no-build --no-restore --verbosity=diagnostic"
+                        $"test tests/{project}/{project}.csproj --configuration=Release --no-build --no-restore --verbosity=normal"
                         + $" --logger \"trx;logfilename=..\\..\\..\\{ArtifactsDir}\\{project}.trx\"");
                 }
                 catch (ExitCodeException) when (ShouldCatch())

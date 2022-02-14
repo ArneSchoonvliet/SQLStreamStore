@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
-    <RuntimeIdentifier>linux-musl-x64</RuntimeIdentifier>
+    <RuntimeIdentifiers>win-x64;linux-musl-x64</RuntimeIdentifiers>
     <AssemblyName>SqlStreamStore.Sqlite.Tests</AssemblyName>
     <RootNamespace>SqlStreamStore</RootNamespace>
   </PropertyGroup>
