@@ -41,7 +41,7 @@ jobs:
         fetch-depth: 0
     - name: Pull Containers
       shell: bash
-      run: docker pull damianh/dotnet-sdks:7
+      run: docker pull alpinelinux/docker-cli:latest-x86_64
     - name: Build and Test
       shell: bash
       run: ./build.sh test-${{ matrix.test }}
