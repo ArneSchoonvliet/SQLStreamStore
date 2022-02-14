@@ -1,4 +1,4 @@
-FROM damianh/dotnet-core-lts-sdks:2
+FROM mcr.microsoft.com/dotnet/sdk:6.0.102
 
 WORKDIR /repo
 
