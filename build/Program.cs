@@ -20,6 +20,7 @@ namespace build
         private const string TestMsSql = "test-mssql";
         private const string TestMsSqlV3 = "test-mssql-v3";
         private const string TestPostgres = "test-postgres";
+        private const string TestPostgresV2 = "test-postgres-v2";
         private const string TestSqlite = "test-sqlite";
         private const string TestHal = "test-hal";
         private const string TestHttp = "test-http";
@@ -63,7 +64,7 @@ namespace build
                         $"test tests/{project}/{project}.csproj --configuration=Release --no-build --no-restore --verbosity=normal"
                         + $" --logger \"trx;logfilename=..\\..\\..\\{ArtifactsDir}\\{project}.trx\"");
                 }
-                catch (NonZeroExitCodeException) when (ShouldCatch())
+                catch (ExitCodeException) when (ShouldCatch())
                 {
                     TestProjectsWithFailures.Add(project);
                 }
@@ -107,6 +108,11 @@ namespace build
                 () => RunTest("SqlStreamStore.Postgres.Tests"));
 
             Target(
+                TestPostgresV2,
+                DependsOn(Build),
+                () => RunTest("SqlStreamStore.PostgresV2.Tests"));
+
+            Target(
                 TestSqlite,
                 DependsOn(Build),
                 () => RunTest("SqlStreamStore.Sqlite.Tests"));
@@ -123,6 +129,7 @@ namespace build
                     "SqlStreamStore.MsSql",
                     "SqlStreamStore.MySql",
                     "SqlStreamStore.Postgres",
+                    "SqlStreamStore.PostgresV2",
                     "SqlStreamStore.HAL",
                     "SqlStreamStore.Http",
                     "SqlStreamStore.Sqlite",
