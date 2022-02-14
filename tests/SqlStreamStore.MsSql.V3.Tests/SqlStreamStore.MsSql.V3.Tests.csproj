@@ -15,9 +15,4 @@
     <ProjectReference Include="..\..\src\SqlStreamStore.MsSql\SqlStreamStore.MsSql.csproj" />
     <ProjectReference Include="..\..\src\SqlStreamStore.TestUtils\SqlStreamStore.TestUtils.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <PackageReference Update="Microsoft.NET.Test.Sdk" Version="17.0.0" />
-    <PackageReference Update="Shouldly" Version="4.0.3" />
-  </ItemGroup>
-
 </Project>
