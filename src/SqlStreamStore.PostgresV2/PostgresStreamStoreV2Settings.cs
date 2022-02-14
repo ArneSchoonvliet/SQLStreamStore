@@ -67,7 +67,7 @@
         /// <summary>
         ///     The log name used for any of the log messages.
         /// </summary>
-        public string LogName { get; } = nameof(PostgresStreamStore);
+        public string LogName { get; } = nameof(PostgresStreamStoreV2);
 
         /// <summary>
         ///     Allows setting whether or not deleting expired (i.e., older than maxCount) messages happens in the same database transaction as append to stream or not.
