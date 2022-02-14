@@ -56,7 +56,19 @@ namespace build
                     }
                 });
 
-            Target(Build, () => Run("dotnet", "build --configuration=Release"));
+            Target(Build, () =>
+            {
+                var rid = Environment.GetEnvironmentVariable("RID");
+
+                var builder =
+                    new StringBuilder(
+                        "build --configuration=Release");
+
+                if(!string.IsNullOrWhiteSpace(rid))
+                    builder.Append($" -r {rid}");
+
+                Run("dotnet", builder.ToString());
+            });
 
             void RunTest(string project)
             {
