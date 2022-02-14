@@ -14,7 +14,6 @@ namespace build
     {
         private const string ArtifactsDir = "artifacts";
         private const string BuildHalDocs = "build-hal-docs";
-        private const string Restore = "build";
         private const string Build = "build";
         private const string Clean = "clean";
         private const string TestAll = "test-all";
@@ -57,23 +56,14 @@ namespace build
                     }
                 });
 
-            Target(Build, () => Run("dotnet", "build --configuration=Release --no-restore"));
+            Target(Build, () => Run("dotnet", "build --configuration=Release"));
 
             void RunTest(string project)
             {
                 try
                 {
-                    var rid = Environment.GetEnvironmentVariable("RID");
-                    var builder =
-                        new StringBuilder(
-                            $"test tests/{project}/{project}.csproj --configuration=Release --no-build --no-restore --verbosity=normal");
-
-                    if(!string.IsNullOrWhiteSpace(rid))
-                        builder.Append($" -r {rid}");
-
-                    builder.Append($" --logger \"trx;logfilename=..\\..\\..\\{ArtifactsDir}\\{project}.trx\"");
-
-                    Run("dotnet", builder.ToString());
+                    Run("dotnet", $"test tests/{project}/{project}.csproj --configuration=Release --no-build --no-restore --verbosity=normal" + 
+                        $" --logger \"trx;logfilename=..\\..\\..\\{ArtifactsDir}\\{project}.trx\"");
                 }
                 catch (ExitCodeException) when (ShouldCatch())
                 {

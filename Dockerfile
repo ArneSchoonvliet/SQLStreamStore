@@ -1,28 +1,20 @@
-FROM mcr.microsoft.com/dotnet/sdk:6.0-alpine
+FROM mcr.microsoft.com/dotnet/sdk:6.0-focal
 
-RUN apk update \
-    && apk add git \
-    && apk add docker-cli \
-    && apk add zip
+RUN apt-get update \
+    && apt-get install git \
+    && apt-get install \
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release -y \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt-get update \
+    && apt-get install docker-ce-cli -y \
+    && apt-get install zip -y
 
-# Workaround for https://github.com/grpc/grpc/issues/18428
-# Also see https://github.com/sgerrand/alpine-pkg-glibc
-# https://stackoverflow.com/a/61268529
-
-ENV GLIBC_VER=2.32-r0
-
-RUN apk update && apk --no-cache add ca-certificates wget \
-    && wget -q -O /etc/apk/keys/sgerrand.rsa.pub https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub \
-    && wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/${GLIBC_VER}/glibc-${GLIBC_VER}.apk \
-    && wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/${GLIBC_VER}/glibc-bin-${GLIBC_VER}.apk \
-    && apk add --no-cache \
-        glibc-${GLIBC_VER}.apk \
-        glibc-bin-${GLIBC_VER}.apk \
-    && rm glibc-${GLIBC_VER}.apk \
-    && rm glibc-bin-${GLIBC_VER}.apk \
-    && rm -rf /var/cache/apk/*
-
-    
 WORKDIR /repo
 
 # https://github.com/moby/moby/issues/15858
@@ -51,7 +43,7 @@ WORKDIR /repo/build
 
 COPY ./build/build.csproj .
 
-RUN dotnet restore -r linux-musl-x64
+RUN dotnet restore
 
 COPY ./build .
 
