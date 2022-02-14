@@ -1,7 +1,7 @@
 ﻿namespace SqlStreamStore.HAL
 {
     using System.Linq;
-    // using Halcyon.HAL;
+    using Halcyon.HAL;
     using Microsoft.AspNetCore.Builder;
     using MidFunc = System.Func<
         Microsoft.AspNetCore.Http.HttpContext,
