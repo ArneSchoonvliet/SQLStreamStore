@@ -110,7 +110,7 @@ namespace build
             Target(
                 TestPostgresV2,
                 DependsOn(Build),
-                () => RunTest("SqlStreamStore.PostgresV2.Tests"));
+                () => RunTest("SqlStreamStore.Postgres.V2.Tests"));
 
             Target(
                 TestSqlite,
