@@ -51,7 +51,7 @@ WORKDIR /repo/build
 
 COPY ./build/build.csproj .
 
-RUN dotnet restore
+RUN dotnet restore -r linux-musl-x64
 
 COPY ./build .
 

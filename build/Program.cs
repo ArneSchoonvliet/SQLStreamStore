@@ -14,6 +14,7 @@ namespace build
     {
         private const string ArtifactsDir = "artifacts";
         private const string BuildHalDocs = "build-hal-docs";
+        private const string Restore = "build";
         private const string Build = "build";
         private const string Clean = "clean";
         private const string TestAll = "test-all";
@@ -56,19 +57,7 @@ namespace build
                     }
                 });
 
-            Target(Build, () =>
-            {
-                var rid = Environment.GetEnvironmentVariable("RID");
-
-                var builder =
-                    new StringBuilder(
-                        "build --configuration=Release");
-
-                if(!string.IsNullOrWhiteSpace(rid))
-                    builder.Append($" -r {rid}");
-
-                Run("dotnet", builder.ToString());
-            });
+            Target(Build, () => Run("dotnet", "build --configuration=Release --no-restore"));
 
             void RunTest(string project)
             {

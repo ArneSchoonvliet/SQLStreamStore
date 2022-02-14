@@ -17,4 +17,8 @@
     <ProjectReference Include="..\SqlStreamStore.Postgres\SqlStreamStore.Postgres.csproj" />
     <ProjectReference Include="..\SqlStreamStore\SqlStreamStore.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Update="Microsoft.SourceLink.GitHub" Version="1.1.1" />
+    <PackageReference Update="MinVer" Version="2.5.0" />
+  </ItemGroup>
 </Project>
