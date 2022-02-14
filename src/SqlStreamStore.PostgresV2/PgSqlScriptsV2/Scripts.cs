@@ -55,6 +55,7 @@
 
         private string SetStreamMetadata => GetScript(nameof(SetStreamMetadata));
 
+        public string Migration => GetScript(nameof(Migration));
 
         public string CreateSchema => string.Join(
             Environment.NewLine,

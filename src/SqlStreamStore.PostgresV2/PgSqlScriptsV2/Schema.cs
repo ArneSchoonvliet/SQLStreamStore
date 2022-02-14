@@ -6,6 +6,7 @@
         private readonly Scripts _scripts;
 
         public string Definition => _scripts.CreateSchema;
+        public string Migration => _scripts.Migration;
         public string DropAll => _scripts.DropAll;
         public string EnableExplainAnalyze => _scripts.EnableExplainAnalyze;
 
