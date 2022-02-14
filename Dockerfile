@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:6.0.102
+FROM damianh/dotnet-sdks:7
 
 WORKDIR /repo
 
