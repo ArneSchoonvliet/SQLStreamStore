@@ -7,5 +7,6 @@ docker run --rm --name sss-build \
  -v $PWD/.git:/repo/.git \
  --network host \
  -e FEEDZ_SSS_API_KEY=$FEEDZ_SSS_API_KEY \
+ -e RID=linux-musl-x64 \
  sss-build \
  dotnet run --project /repo/build/build.csproj -- "$@"

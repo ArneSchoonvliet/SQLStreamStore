@@ -8,6 +8,8 @@ using static SimpleExec.Command;
 
 namespace build
 {
+    using System.Text;
+
     class Program
     {
         private const string ArtifactsDir = "artifacts";
@@ -60,9 +62,17 @@ namespace build
             {
                 try
                 {
-                    Run("dotnet",
-                        $"test tests/{project}/{project}.csproj --configuration=Release --no-build --no-restore --verbosity=normal"
-                        + $" --logger \"trx;logfilename=..\\..\\..\\{ArtifactsDir}\\{project}.trx\"");
+                    var rid = Environment.GetEnvironmentVariable("RID");
+                    var builder =
+                        new StringBuilder(
+                            $"test tests/{project}/{project}.csproj --configuration=Release --no-build --no-restore --verbosity=normal");
+
+                    if(!string.IsNullOrWhiteSpace(rid))
+                        builder.Append($" --rid={rid}");
+
+                    builder.Append($" --logger \"trx;logfilename=..\\..\\..\\{ArtifactsDir}\\{project}.trx\"");
+
+                    Run("dotnet", builder.ToString());
                 }
                 catch (ExitCodeException) when (ShouldCatch())
                 {
