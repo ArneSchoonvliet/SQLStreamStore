@@ -6,45 +6,45 @@
     <RootNamespace>SqlStreamStore</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\SqlStreamStore.AcceptanceTests\*.cs" />
+    <Compile Include="..\SqlStreamStore.AcceptanceTests\*.cs" />    
     <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.cs">
-      <Link>temp\AcceptanceTests.cs</Link>
+      <Link>AcceptanceTests.cs</Link>
     </Compile>
     <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.AppendStream.cs">
-      <Link>temp\AcceptanceTests.AppendStream.cs</Link>
+      <Link>AcceptanceTests.AppendStream.cs</Link>
     </Compile>
     <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.DeleteEvent.cs">
-      <Link>temp\AcceptanceTests.DeleteEvent.cs</Link>
+      <Link>AcceptanceTests.DeleteEvent.cs</Link>
     </Compile>
     <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.DeleteStream.cs">
-      <Link>temp\AcceptanceTests.DeleteStream.cs</Link>
+      <Link>AcceptanceTests.DeleteStream.cs</Link>
     </Compile>
     <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.DeletionTracking.cs">
-      <Link>temp\AcceptanceTests.DeletionTracking.cs</Link>
+      <Link>AcceptanceTests.DeletionTracking.cs</Link>
     </Compile>
     <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.ListStreams.cs">
-      <Link>temp\AcceptanceTests.ListStreams.cs</Link>
+      <Link>AcceptanceTests.ListStreams.cs</Link>
     </Compile>
     <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.ReadAll.cs">
-      <Link>temp\AcceptanceTests.ReadAll.cs</Link>
+      <Link>AcceptanceTests.ReadAll.cs</Link>
     </Compile>
     <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.ReadHeadCheckpoint.cs">
-      <Link>temp\AcceptanceTests.ReadHeadCheckpoint.cs</Link>
+      <Link>AcceptanceTests.ReadHeadCheckpoint.cs</Link>
     </Compile>
     <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.ReadStream.cs">
-      <Link>temp\AcceptanceTests.ReadStream.cs</Link>
+      <Link>AcceptanceTests.ReadStream.cs</Link>
     </Compile>
     <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.StreamLimits.cs">
-      <Link>temp\AcceptanceTests.StreamLimits.cs</Link>
+      <Link>AcceptanceTests.StreamLimits.cs</Link>
     </Compile>
     <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.StreamMetadata.cs">
-      <Link>temp\AcceptanceTests.StreamMetadata.cs</Link>
+      <Link>AcceptanceTests.StreamMetadata.cs</Link>
     </Compile>
     <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.Subscriptions.cs">
-      <Link>temp\AcceptanceTests.Subscriptions.cs</Link>
+      <Link>AcceptanceTests.Subscriptions.cs</Link>
     </Compile>
     <Compile Update="..\SqlStreamStore.AcceptanceTests\IStreamStoreFixture.cs">
-      <Link>temp\IStreamStoreFixture.cs</Link>
+      <Link>IStreamStoreFixture.cs</Link>
     </Compile>
   </ItemGroup>
   <ItemGroup>
