@@ -6,46 +6,7 @@
     <RootNamespace>SqlStreamStore</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\SqlStreamStore.AcceptanceTests\*.cs" />    
-    <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.cs">
-      <Link>AcceptanceTests.cs</Link>
-    </Compile>
-    <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.AppendStream.cs">
-      <Link>AcceptanceTests.AppendStream.cs</Link>
-    </Compile>
-    <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.DeleteEvent.cs">
-      <Link>AcceptanceTests.DeleteEvent.cs</Link>
-    </Compile>
-    <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.DeleteStream.cs">
-      <Link>AcceptanceTests.DeleteStream.cs</Link>
-    </Compile>
-    <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.DeletionTracking.cs">
-      <Link>AcceptanceTests.DeletionTracking.cs</Link>
-    </Compile>
-    <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.ListStreams.cs">
-      <Link>AcceptanceTests.ListStreams.cs</Link>
-    </Compile>
-    <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.ReadAll.cs">
-      <Link>AcceptanceTests.ReadAll.cs</Link>
-    </Compile>
-    <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.ReadHeadCheckpoint.cs">
-      <Link>AcceptanceTests.ReadHeadCheckpoint.cs</Link>
-    </Compile>
-    <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.ReadStream.cs">
-      <Link>AcceptanceTests.ReadStream.cs</Link>
-    </Compile>
-    <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.StreamLimits.cs">
-      <Link>AcceptanceTests.StreamLimits.cs</Link>
-    </Compile>
-    <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.StreamMetadata.cs">
-      <Link>AcceptanceTests.StreamMetadata.cs</Link>
-    </Compile>
-    <Compile Update="..\SqlStreamStore.AcceptanceTests\AcceptanceTests.Subscriptions.cs">
-      <Link>AcceptanceTests.Subscriptions.cs</Link>
-    </Compile>
-    <Compile Update="..\SqlStreamStore.AcceptanceTests\IStreamStoreFixture.cs">
-      <Link>IStreamStoreFixture.cs</Link>
-    </Compile>
+    <Compile Include="..\SqlStreamStore.AcceptanceTests\*.cs" />   
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\SqlStreamStore.Postgres\SqlStreamStore.Postgres.csproj" />
