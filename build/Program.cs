@@ -8,6 +8,8 @@ using static SimpleExec.Command;
 
 namespace build
 {
+    using System.Threading.Tasks;
+
     class Program
     {
         private const string ArtifactsDir = "artifacts";
@@ -27,7 +29,7 @@ namespace build
         private const string Publish = "publish";
         private static List<string> TestProjectsWithFailures = new List<string>();
 
-        private static void Main(string[] args)
+        private static async Task Main(string[] args)
         {
             Target(Clean,
                 () =>
@@ -179,7 +181,7 @@ namespace build
                     }
                 });
 
-            RunTargetsAndExit(args);
+            await RunTargetsAndExitAsync(args);
         }
     }
 }
