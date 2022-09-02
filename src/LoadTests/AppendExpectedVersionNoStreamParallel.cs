@@ -63,7 +63,7 @@
 
             Queue<int> streamsToInsert = new Queue<int>(Enumerable.Range(0, numberOfStreams));
 
-            string jsonData = new string('a', messageJsonDataSize);
+            string jsonData = $@"{{""b"": ""{new string('a', messageJsonDataSize * 1024)}""}}";
             var stopwatch = Stopwatch.StartNew();
             for(int i = 0; i < parallelTasks; i++)
             {

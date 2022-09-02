@@ -50,7 +50,7 @@
 
             var tasks = new List<Task>();
             int count = 0;
-            string jsonData = new string('a', messageJsonDataSize);
+            string jsonData = $@"{{""b"": ""{new string('a', messageJsonDataSize * 1024)}""}}";
             var stopwatch = Stopwatch.StartNew();
             for (int i = 0; i < parallelTasks; i++)
             {

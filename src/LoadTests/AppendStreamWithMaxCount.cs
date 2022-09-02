@@ -40,7 +40,7 @@
                     cancellationToken: ct);
 
                 var messageNumbers = new int[numberOfMessagesPerAmend];
-                string jsonData = new string('a', messageJsonDataSize * 1024);
+                string jsonData = $@"{{""b"": ""{new string('a', messageJsonDataSize * 1024)}""}}";
 
                 var stopwatch = Stopwatch.StartNew();
                 while(count < numberOfMessagesToWrite)

@@ -28,7 +28,7 @@
 
                 int readPageSize = Input.ReadInt("Read page size: ", 1, 10000);
 
-                string jsonData = new string('a', messageJsonDataSize * 1024);
+                string jsonData = $@"{{""b"": ""{new string('a', messageJsonDataSize * 1024)}""}}";
 
 
                 var linkedToken = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -54,7 +54,9 @@
                 await Task.WhenAll(list);
 
                 Output.WriteLine("Writes finished");
+                await Task.Delay(10000, ct);
                 linkedToken.Cancel();
+
 
                 await WriteActualGaps(ct, streamStore);
 

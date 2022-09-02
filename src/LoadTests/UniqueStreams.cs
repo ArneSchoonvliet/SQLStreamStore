@@ -41,7 +41,7 @@
 
             int numberOfMessagesPerAmend = Input.ReadInt("Number of messages per stream append: ", 1, 1000);
 
-            string jsonData = new string('a', messageJsonDataSize);
+            string jsonData = $@"{{""b"": ""{new string('a', messageJsonDataSize * 1024)}""}}";
 
             var stopwatch = Stopwatch.StartNew();
             var messageNumbers = new int[numberOfMessagesPerAmend];
