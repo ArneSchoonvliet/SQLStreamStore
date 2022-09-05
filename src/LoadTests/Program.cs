@@ -45,6 +45,9 @@
                 .Add(
                     "Append Read Deadlocks",
                     async ct => await new AppendsReadsDeadlocks().Run(ct))
+                .Add(
+                    "Basic Read",
+                    async ct => await new BasicRead().Run(ct))
                 .Display(cts.Token);
 
             if(Debugger.IsAttached)

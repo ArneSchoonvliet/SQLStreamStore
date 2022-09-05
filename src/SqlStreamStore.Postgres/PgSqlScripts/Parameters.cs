@@ -1,6 +1,7 @@
 ﻿namespace SqlStreamStore.PgSqlScripts
 {
     using System;
+    using System.Collections.Generic;
     using Npgsql;
     using NpgsqlTypes;
     using SqlStreamStore.Infrastructure;
@@ -132,6 +133,23 @@
                         MetadataMessageIdGenerator.Create(streamId.IdOriginal, expectedVersion, jsonData),
                         "$stream-metadata",
                         jsonData))
+            };
+        }
+
+        public static NpgsqlParameter TransactionIds(long[] value)
+        {
+            return new NpgsqlParameter<long[]>
+            {
+                Value = value
+            };
+        }
+
+        public static NpgsqlParameter Name(string value)
+        {
+            return new NpgsqlParameter<string>
+            {
+                NpgsqlDbType = NpgsqlDbType.Name,
+                TypedValue = value
             };
         }
 

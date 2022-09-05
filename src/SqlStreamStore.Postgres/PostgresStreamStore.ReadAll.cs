@@ -4,11 +4,11 @@
     using System.Collections.Generic;
     using System.Data;
     using System.Data.Common;
+    using System.Diagnostics;
     using System.Linq;
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
-    using System.Transactions;
 
     using Npgsql;
 
@@ -63,20 +63,20 @@
                 readNext,
                 filteredMessages.ToArray());
 
-            //using(var connection = await OpenConnection(cancellationToken))
-            //using(var transaction = connection.BeginTransaction())
-            //using(var command = BuildFunctionCommand(
+            //using (var connection = await OpenConnection(cancellationToken))
+            //using (var transaction = connection.BeginTransaction())
+            //using (var command = BuildFunctionCommand(
             //    _schema.ReadAll,
             //    transaction,
             //    Parameters.Count(maxCount + 1),
             //    Parameters.Position(fromPositionExclusive),
             //    Parameters.ReadDirection(ReadDirection.Forward),
             //    Parameters.Prefetch(prefetch)))
-            //using(var reader = await command
+            //using (var reader = await command
             //    .ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken)
             //    .ConfigureAwait(false))
             //{
-            //    if(!reader.HasRows)
+            //    if (!reader.HasRows)
             //    {
             //        return new ReadAllPage(
             //            fromPositionExclusive,
@@ -89,9 +89,9 @@
 
             //    var messages = new List<(StreamMessage message, int? maxAge)>();
 
-            //    while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            //    while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             //    {
-            //        if(messages.Count == maxCount)
+            //        if (messages.Count == maxCount)
             //        {
             //            messages.Add(default);
             //        }
@@ -106,7 +106,7 @@
 
             //    bool isEnd = true;
 
-            //    if(messages.Count == maxCount + 1) // An extra row was read, we're not at the end
+            //    if (messages.Count == maxCount + 1) // An extra row was read, we're not at the end
             //    {
             //        isEnd = false;
             //        messages.RemoveAt(maxCount);
@@ -206,14 +206,39 @@
             CancellationToken cancellationToken)
         {
             var correlation = Guid.NewGuid();
+            Logger.InfoFormat("{correlation} Messages: {messages}", correlation, string.Join("|", messages.Select((x, i) => $"Position: {x.message.Position} Array index: {i}")));
             var transactions = ParseTransactionSnapshot(transactionSnapshot);
-            if(!transactions.Any())
+            Logger.InfoFormat("{correlation} Gap checking. Message count: {messageCount} | Transaction snapshot {transactionSnapshot}", correlation, messages.Count, transactionSnapshot);
+
+            //if(!transactions.Any())
+            //{
+            //    Logger.InfoFormat($"Transaction snapshot {transactionSnapshot} has no other pending transactions. No need for gap checking, all gaps are expected gaps.");
+            //    return messages;
+            //}
+
+            async Task<List<(StreamMessage message, int? maxAge)>> RetrieveMessages()
             {
-                Logger.InfoFormat($"Transaction snapshot {transactionSnapshot} has no other pending transactions. No need for gap checking, all gaps are expected gaps.");
-                return messages;
+                var toPositionInclusive = messages[messages.Count - 1].message.Position;
+                
+                Logger.InfoFormat("{correlation} Query partial page from {fromPositionInclusive} to {toPositionInclusive}", correlation, fromPositionInclusive, toPositionInclusive);
+
+                var (newMessages, _) = await ReadAllPageForwards(fromPositionInclusive,
+                    toPositionInclusive,
+                    maxCount,
+                    prefetch,
+                    cancellationToken);
+
+                return newMessages;
             }
 
-            Logger.InfoFormat("{correlation} Gap checking. Message count: {messageCount} | Transaction snapshot {transactionSnapshot}", correlation, messages.Count, transactionSnapshot);
+            // Check for gap between last page and this.
+            if(messages[0].message.Position != fromPositionInclusive)
+            {
+                await TransactionReloader(transactions, correlation, cancellationToken);
+                return await RetrieveMessages();
+            }
+
+
             for (int i = 0; i < messages.Count - 1; i++)
             {
                 var expectedNextPosition = messages[i].message.Position + 1;
@@ -223,37 +248,48 @@
                 if (expectedNextPosition != actualPosition)
                 {
                     Logger.InfoFormat("{correlation} Gap detected", correlation);
-                    var toPositionInclusive = messages[messages.Count - 1].message.Position;
 
-                    Logger.InfoFormat("{correlation} Transaction snapshot {transactionSnapshot} has pending transactions so gaps might be filled. Query partial page from {fromPositionInclusive} to {toPositionInclusive}", correlation, transactionSnapshot, fromPositionInclusive, toPositionInclusive);
+                    await TransactionReloader(transactions, correlation, cancellationToken);
 
-                    (List<(StreamMessage message, int? maxAge)> Messages, string TransactionSnapshot) result;
-                    do
-                    {
-                        result = await ReadAllPageForwards(fromPositionInclusive,
-                            toPositionInclusive,
-                            maxCount,
-                            prefetch,
-                            cancellationToken);
-
-                        Logger.InfoFormat("{correlation} Transaction snapshot {{transactionSnapshot}} | Re-queried page transaction snapshot {transactionSnapshot}", correlation, transactionSnapshot, result.TransactionSnapshot);
-
-                    } while (transactions.Intersect(ParseTransactionSnapshot(result.TransactionSnapshot)).Any());
-
-                    return result.Messages;
-
-                    // switched this to return the partial page, then re-issue load starting at gap
-                    // this speeds up the retry instead of taking a 3 second delay immediately
-                    //var messagesBeforeGap = new StreamMessage[i+1];
-                    //page.Messages.Take(i+1).ToArray().CopyTo(messagesBeforeGap, 0);
-                    //return new ReadAllPage(page.FromPosition, maxPosition, page.IsEnd, page.Direction, ReadNext, messagesBeforeGap);
+                    return await RetrieveMessages();
                 }
             }
 
             return messages;
         }
 
-        private static List<long> ParseTransactionSnapshot(string transactionSnapshot)
+        private async Task TransactionReloader(long[] transactions, Guid correlation, CancellationToken cancellationToken)
+        {
+            Logger.InfoFormat("{correlation} Transaction snapshot {transactions} has pending transactions so gaps might be filled. Start checking transactions.", correlation, string.Join(",", transactions));
+            bool stillInProgress;
+            int count = 0;
+            int delayTime = 0;
+
+            var sw = Stopwatch.StartNew();
+            do
+            {
+                stillInProgress = await ReadTransactionInProgress(transactions, cancellationToken);
+                var timeTaken = sw.ElapsedMilliseconds;
+                Logger.InfoFormat("{correlation} Transactions still pending. Query took: {timeTaken}", correlation, timeTaken);
+                
+                if(count % 5 == 0)
+                    delayTime += 10;
+
+                if(delayTime > 0)
+                {
+                    Logger.InfoFormat("{correlation} Delay for {delayTime}ms", correlation, delayTime);
+                    await Task.Delay(delayTime, cancellationToken);
+                }
+
+                count++;
+                sw.Restart();
+
+            } while (stillInProgress);
+        }
+
+
+
+        private static long[] ParseTransactionSnapshot(string transactionSnapshot)
         {
             if (!string.IsNullOrWhiteSpace(transactionSnapshot))
             {
@@ -261,11 +297,27 @@
 
                 if (splitResult.Length > 2 && !string.IsNullOrWhiteSpace(splitResult[2]))
                 {
-                    return splitResult[2].Split(',').Select(x => Convert.ToInt64(x)).ToList();
+                    return splitResult[2].Split(',').Select(x => Convert.ToInt64(x)).ToArray();
                 }
             }
 
-            return new List<long>();
+            return Array.Empty<long>();
+        }
+
+        private async Task<bool> ReadTransactionInProgress(long[] transactionIds, CancellationToken cancellationToken)
+        {
+            using(var connection = await OpenConnection(cancellationToken))
+            using(var transaction = connection.BeginTransaction())
+            using(var command = BuildFunctionCommand(
+                      _schema.ReadTransactionInProgress, 
+                      transaction, 
+                      Parameters.Name(connection.Database), 
+                      Parameters.TransactionIds(transactionIds)))
+            {
+                var result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+
+                return (bool) result;
+            }
         }
 
         protected override async Task<ReadAllPage> ReadAllBackwardsInternal(
