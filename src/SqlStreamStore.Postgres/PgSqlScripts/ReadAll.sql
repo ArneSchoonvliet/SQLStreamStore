@@ -43,7 +43,7 @@ BEGIN
   RETURN NEXT _messages;
 
   OPEN _txinfo FOR
-  SELECT txid_current_snapshot()::TEXT;
+  SELECT txid_snapshot_xip(txid_current_snapshot());
   RETURN NEXT _txinfo;
 END;
 $F$

@@ -136,11 +136,11 @@
             };
         }
 
-        public static NpgsqlParameter TransactionIds(long[] value)
+        public static NpgsqlParameter TransactionIds(TxIdList value)
         {
             return new NpgsqlParameter<long[]>
             {
-                Value = value
+                Value = value.ToArray()
             };
         }
 

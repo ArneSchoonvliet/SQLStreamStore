@@ -25,7 +25,7 @@
         public string ReadAllHeadPosition => $"{_schema}.read_head_position";
         public string ReadStreamHeadPosition => $"{_schema}.read_stream_head_position";
         public string ReadStreamHeadVersion => $"{_schema}.read_stream_head_version";
-        public string ReadTransactionInProgress => $"{_schema}.read_transaction_in_progress";
+        public string ReadAnyTransactionsInProgress => $"{_schema}.read_any_transactions_in_progress";
         public string ReadJsonData => $"{_schema}.read_json_data";
         public string ReadSchemaVersion => $"{_schema}.read_schema_version";
         public string ReadStreamMessageBeforeCreatedCount => $"{_schema}.read_stream_message_before_created_count";

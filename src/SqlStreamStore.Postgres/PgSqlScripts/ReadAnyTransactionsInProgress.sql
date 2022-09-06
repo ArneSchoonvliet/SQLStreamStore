@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION __schema__.read_transaction_in_progress(
+CREATE OR REPLACE FUNCTION __schema__.read_any_transactions_in_progress(
     _datname NAME,
     _txids   BIGINT[]
 )

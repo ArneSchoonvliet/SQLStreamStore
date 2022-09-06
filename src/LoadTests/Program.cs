@@ -43,6 +43,9 @@
                     "Test gaps",
                     async ct => await new TestGaps().Run(ct))
                 .Add(
+                    "Test tailing",
+                    async ct => await new TestTailing().Run(ct))
+                .Add(
                     "Append Read Deadlocks",
                     async ct => await new AppendsReadsDeadlocks().Run(ct))
                 .Add(
