@@ -3,15 +3,21 @@
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
+    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
+
     using EasyConsole;
+
     using Microsoft.Data.SqlClient;
+
     using SqlStreamStore;
     using SqlStreamStore.Streams;
+    using Xunit;
 
     public class TestTailing : LoadTest
     {
+        private static readonly object s_lock = new object();
         private static readonly List<long> s_db = new List<long>();
         private static IAllStreamSubscription s_subscription;
         public override async Task Run(CancellationToken ct)
@@ -34,33 +40,105 @@
 
 
                 var linkedToken = CancellationTokenSource.CreateLinkedTokenSource(ct);
-
+                var readLikeToken = new CancellationTokenSource();
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
-                Task.Run(() => RunRead(streamStore, readPageSize), linkedToken.Token);
+                Task.Run(() => RunSubscribe(streamStore, readPageSize), linkedToken.Token);
+                Enumerable.Range(0, 128).Select(_ => Task.Run(() => RunLike(streamStore, readLikeToken.Token), readLikeToken.Token)).ToList();
 #pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
 
-                var list = new List<Task>();
-                for(int i = 0; i < 30; i++)
+                var sw = Stopwatch.StartNew();
+                var l = new List<(CancellationTokenSource source, Task task)>();
+                var count = 0;
+                var maxConcurrent = 0;
+                while (sw.ElapsedMilliseconds < TimeSpan.FromMinutes(5).TotalMilliseconds)
                 {
-                    var t = Task.Run(() =>
-                            RunWrites(ct,
-                                numberOfMessagesPerAmend,
-                                numberOfStreams,
-                                i * numberOfStreams,
-                                jsonData,
-                                streamStore),
-                        ct);
-                    list.Add(t);
+                    var head = await streamStore.ReadHeadPosition(linkedToken.Token);
+
+                    lock (s_lock)
+                    {
+                        var subscriptionPosition = s_db.LastOrDefault();
+
+                        Output.WriteLine($"Head: {head}, Subscription: {subscriptionPosition}");
+
+                        if (head > subscriptionPosition + 1000)
+                        {
+                            if(l.Any())
+                            {
+                                Output.WriteLine("Cancelling");
+                                var cts = l.Last();
+                                cts.source.Cancel();
+                                l.Remove(cts);
+                                maxConcurrent--;
+                            }
+                        }
+                        else if (maxConcurrent < 50)
+                        {
+                            var cts = new CancellationTokenSource();
+                            var t = Task.Run(() =>
+                                RunWrites(cts.Token,
+                                    numberOfMessagesPerAmend,
+                                    numberOfStreams,
+                                    l.Count * numberOfStreams,
+                                    jsonData,
+                                    streamStore),
+                                cts.Token);
+                            l.Add((cts, t));
+
+                            maxConcurrent++;
+                        }
+                    }
+
+                    await Task.Delay(200, linkedToken.Token);
+                    count++; 
                 }
 
-                await Task.WhenAll(list);
+                readLikeToken.Cancel();
+                readLikeToken.Dispose();
+
+                foreach(var valueTuple in l)
+                {
+                    valueTuple.source.Cancel();
+                    valueTuple.source.Dispose();
+                }
+
+                await Task.WhenAll(l.Select(x => x.task).Where(t => !t.IsCanceled));
 
                 Output.WriteLine("Writes finished");
-                linkedToken.Cancel();
 
+
+                var db = new List<long>();
+                ReadAllPage page = await streamStore.ReadAllForwards(Position.Start, 500, false, ct);
+                do
+                {
+                    db.AddRange(page.Messages.Select(x => x.Position));
+                    page = await page.ReadNext(linkedToken.Token);
+                } while(!page.IsEnd);
+
+                db.AddRange(page.Messages.Select(x => x.Position));
+
+
+                while(true)
+                {
+                    var head = await streamStore.ReadHeadPosition(linkedToken.Token);
+                    lock(s_lock)
+                    {
+                        if(head == s_db.Last())
+                        {
+                            break;
+                        }
+                    }
+
+                    await Task.Delay(150, linkedToken.Token);
+                }
+
+                linkedToken.Cancel();
+                linkedToken.Dispose();
                 s_subscription.Dispose();
 
-                //await WriteActualGaps(ct, streamStore);
+                lock(s_lock)
+                {
+                    Assert.True(db.SequenceEqual(s_db));
+                }
 
                 Output.WriteLine("Done");
             }
@@ -70,50 +148,39 @@
             }
         }
 
-        private static async Task WriteActualGaps(CancellationToken ct, IStreamStore streamStore)
+        private static async Task RunLike(IStreamStore streamStore, CancellationToken token)
         {
-            var stopwatch = Stopwatch.StartNew();
-            var count = 0;
-            Output.WriteLine("Actual gaps:");
-            var page = await streamStore.ReadAllForwards(Position.Start, 73, false, ct);
-            count += page.Messages.Length;
-            var prevPosition = page.Messages[0].Position;
-            for(int i = 1; i < page.Messages.Length; i++)
+            while(true)
             {
-                if(prevPosition + 1 != page.Messages[i].Position)
+                try
                 {
-                    Output.WriteLine($"- {prevPosition} : {page.Messages[i].Position}");
+                    token.ThrowIfCancellationRequested();
+                    await streamStore.ListStreams(Pattern.StartsWith("stream"), 500, null, token);
                 }
-                prevPosition = page.Messages[i].Position;
-            }
-            while(!page.IsEnd)
-            {
-                page = await page.ReadNext(ct);
-                count += page.Messages.Length;
-                for(int i = 0; i < page.Messages.Length; i++)
+                catch(OperationCanceledException ex)
                 {
-                    if(prevPosition + 1 != page.Messages[i].Position)
-                    {
-                        Output.WriteLine($"- {prevPosition} : {page.Messages[i].Position}");
-                    }
-                    prevPosition = page.Messages[i].Position;
+                    Output.WriteLine(ex.ToString());
+                    break;
+                }
+                catch(Exception ex)
+                {
+                    Output.WriteLine(ex.ToString());
                 }
             }
-            stopwatch.Stop();
-            var rate = Math.Round((decimal) count / stopwatch.ElapsedMilliseconds * 1000, 0);
-            Output.WriteLine("");
-            Output.WriteLine($"< {count} messages read {stopwatch.Elapsed} ({rate} m/s)");
         }
 
-
-        private static Task RunRead(IStreamStore streamStore, int readPageSize)
+        private static Task RunSubscribe(IStreamStore streamStore, int readPageSize)
         {
             s_subscription = streamStore.SubscribeToAll(
                 null,
                 (_, m, ___) =>
                 {
-                    s_db.Add(m.Position);
-                    return Task.CompletedTask;
+                    lock (s_lock)
+                    {
+                        s_db.Add(m.Position);
+                        return Task.CompletedTask;
+                    }
+
                 });
             s_subscription.MaxCountPerRead = readPageSize;
 
@@ -131,7 +198,7 @@
             var stopwatch = Stopwatch.StartNew();
             var messageNumbers = new int[numberOfMessagesPerAmend];
             int count = 1;
-            for(int i = 0; i < numberOfStreams; i++)
+            for (int i = 0; i < numberOfStreams; i++)
             {
                 ct.ThrowIfCancellationRequested();
                 try
@@ -155,22 +222,22 @@
                 {
                     // just timeout
                 }
-                catch(Exception ex) when(!(ex is TaskCanceledException))
+                catch(TaskCanceledException ex)
                 {
                     Output.WriteLine(ex.ToString());
+                    break;
+                }
+                catch (Exception ex) when (!(ex is TaskCanceledException))
+                {
+                    Output.WriteLine(ex.ToString());
+                    break;
                 }
             }
             stopwatch.Stop();
-            var rate = Math.Round((decimal) count / stopwatch.ElapsedMilliseconds * 1000, 0);
+            var rate = Math.Round((decimal)count / stopwatch.ElapsedMilliseconds * 1000, 0);
 
             Output.WriteLine("");
             Output.WriteLine($"> {count - 1} messages written in {stopwatch.Elapsed} ({rate} m/s)");
-        }
-
-        private enum YesNo
-        {
-            Yes,
-            No
         }
     }
 }

@@ -29,9 +29,11 @@
             maxCount = maxCount == int.MaxValue ? maxCount - 1 : maxCount;
 
             var (readAllResult, transactionIdsInProgress) = await ReadAllForwards(fromPositionExclusive, null, maxCount, prefetch, correlation, cancellationToken);
-            var gapHandleResult = await HandleGaps(readAllResult, transactionIdsInProgress, fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken);
 
-            readAllResult = gapHandleResult.ReadAllResult;
+
+            //var gapHandleResult = await HandleGaps(readAllResult, transactionIdsInProgress, fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken);
+
+            //readAllResult = gapHandleResult.ReadAllResult;
 
             if (!readAllResult.Any())
             {
@@ -44,6 +46,14 @@
                     Array.Empty<StreamMessage>());
             }
 
+            bool isEnd = true;
+
+            if (readAllResult.Count == maxCount + 1) // An extra row was read, we're not at the end
+            {
+                isEnd = false;
+                readAllResult.RemoveAt(maxCount);
+            }
+
             var filteredMessages = FilterExpired(readAllResult);
 
             var nextPosition = filteredMessages[filteredMessages.Count - 1].Position + 1;
@@ -51,7 +61,7 @@
             return new ReadAllPage(
                 fromPositionExclusive,
                 nextPosition,
-                gapHandleResult.isEnd,
+                isEnd,
                 ReadDirection.Forward,
                 readNext,
                 filteredMessages.ToArray());
@@ -208,7 +218,6 @@
 
             }
 
-            
             // When transactions are in progress and no messages we need to start polling. It could by all means be possible that all the messages are still in flight transactions.
             // We will not poll transactions and set isEnd to false;
             // TODO: check if isEnd to false really is a desired behaviour. It might make more sense to have it on true. 
@@ -227,7 +236,6 @@
 
                 return (readAllResult, isEnd);
             }
-
 
             // Check for gap between last page and this. 
             // TODO: Check if we are not allowing same position twice

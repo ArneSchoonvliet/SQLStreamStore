@@ -11,7 +11,7 @@ namespace SqlStreamStore.TestUtils.Postgres
     public class PostgresContainer : PostgresDatabaseManager
     {
         private readonly IContainerService _containerService;
-        private const string Image = "postgres:10.4-alpine";
+        private const string Image = "postgres:9.6";
         private const string ContainerName = "sql-stream-store-tests-postgres";
         private const int Port = 5432;
 
@@ -26,8 +26,9 @@ namespace SqlStreamStore.TestUtils.Postgres
                 .UseImage(Image)
                 .KeepRunning()
                 .ReuseIfExists()
+                .WithEnvironment("POSTGRES_PASSWORD=password")
                 .ExposePort(Port, Port)
-                .Command("-N", "500")
+                .Command("", "-c max_connections=1000 -c shared_buffers=512MB")
                 .Build();
         }
 
@@ -50,9 +51,7 @@ namespace SqlStreamStore.TestUtils.Postgres
         private NpgsqlConnectionStringBuilder ConnectionStringBuilder => new NpgsqlConnectionStringBuilder
         {
             Database = DatabaseName,
-            Password = Environment.OSVersion.IsWindows()
-                ? "password"
-                : null,
+            Password = "password",
             Port = Port,
             Username = "postgres",
             Host = "localhost",
