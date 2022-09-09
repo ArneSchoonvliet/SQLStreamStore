@@ -48,9 +48,8 @@
 
                 var sw = Stopwatch.StartNew();
                 var l = new List<(CancellationTokenSource source, Task task)>();
-                var count = 0;
                 var maxConcurrent = 0;
-                while (sw.ElapsedMilliseconds < TimeSpan.FromMinutes(5).TotalMilliseconds)
+                while (sw.ElapsedMilliseconds < TimeSpan.FromMinutes(2).TotalMilliseconds)
                 {
                     var head = await streamStore.ReadHeadPosition(linkedToken.Token);
 
@@ -67,11 +66,12 @@
                                 Output.WriteLine("Cancelling");
                                 var cts = l.Last();
                                 cts.source.Cancel();
+                                cts.source.Dispose();
                                 l.Remove(cts);
                                 maxConcurrent--;
                             }
                         }
-                        else if (maxConcurrent < 50)
+                        else if (maxConcurrent < 100)
                         {
                             var cts = new CancellationTokenSource();
                             var t = Task.Run(() =>
@@ -89,7 +89,6 @@
                     }
 
                     await Task.Delay(200, linkedToken.Token);
-                    count++; 
                 }
 
                 readLikeToken.Cancel();

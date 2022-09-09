@@ -26,14 +26,14 @@
             CancellationToken cancellationToken)
         {
             var correlation = Guid.NewGuid();
+
             maxCount = maxCount == int.MaxValue ? maxCount - 1 : maxCount;
 
             var (readAllResult, transactionIdsInProgress) = await ReadAllForwards(fromPositionExclusive, null, maxCount, prefetch, correlation, cancellationToken);
 
+            var gapHandleResult = await HandleGaps(readAllResult, transactionIdsInProgress, fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken);
 
-            //var gapHandleResult = await HandleGaps(readAllResult, transactionIdsInProgress, fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken);
-
-            //readAllResult = gapHandleResult.ReadAllResult;
+            readAllResult = gapHandleResult.ReadAllResult;
 
             if (!readAllResult.Any())
             {
@@ -46,13 +46,13 @@
                     Array.Empty<StreamMessage>());
             }
 
-            bool isEnd = true;
+            //bool isEnd = true;
 
-            if (readAllResult.Count == maxCount + 1) // An extra row was read, we're not at the end
-            {
-                isEnd = false;
-                readAllResult.RemoveAt(maxCount);
-            }
+            //if (readAllResult.Count == maxCount + 1) // An extra row was read, we're not at the end
+            //{
+            //    isEnd = false;
+            //    readAllResult.RemoveAt(maxCount);
+            //}
 
             var filteredMessages = FilterExpired(readAllResult);
 
@@ -61,7 +61,7 @@
             return new ReadAllPage(
                 fromPositionExclusive,
                 nextPosition,
-                isEnd,
+                gapHandleResult.isEnd,
                 ReadDirection.Forward,
                 readNext,
                 filteredMessages.ToArray());
@@ -210,12 +210,10 @@
                 }
                 else
                 {
-                    newReadAllResult.RemoveAt(maxCount);
+                    readResultToReturn.RemoveAt(maxCount);
                 }
 
                 return (readResultToReturn, isEnd);
-
-
             }
 
             // When transactions are in progress and no messages we need to start polling. It could by all means be possible that all the messages are still in flight transactions.
@@ -227,9 +225,11 @@
                 return (new List<(StreamMessage message, int? maxAge)>(), false);
             }
 
+            // TODO: trasactionInProgress can be NULL: we need to check how and what to do with it.
             if (!transactionsInProgress.Any())
             {
                 Logger.InfoFormat("{correlation} No transactions in progress, no need for gap checking", correlation);
+
                 var isEnd = IsEnd(readAllResult.Count, maxCount);
                 if (!isEnd)
                     readAllResult.RemoveAt(maxCount);
@@ -301,6 +301,7 @@
                 {
                     Logger.ErrorFormat("{correlation} Possible DEADLOCK! One of these transactions: {transactions} is in progress for longer then {totalTime}ms", correlation, transactionsInProgress, totalTime);
                 }
+
 
                 if (delayTime > 0)
                 {
