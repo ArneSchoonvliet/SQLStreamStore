@@ -14,7 +14,8 @@
 
         public async Task<PostgresStreamStoreFixture> Get(
             ITestOutputHelper outputHelper,
-            string schema = "dbo")
+            string schema = "dbo",
+            bool newGapHandlingEnabled = false)
         {
             var fixturePool = _fixturePoolBySchema.GetOrAdd(
                 schema,
@@ -31,7 +32,7 @@
                     schema,
                     dockerInstance,
                     databaseName,
-                    onDispose:() => fixturePool.Enqueue(fixture));
+                    onDispose:() => fixturePool.Enqueue(fixture), newGapHandlingEnabled);
 
                 outputHelper.WriteLine($"Using new fixture with db {databaseName}");
             }

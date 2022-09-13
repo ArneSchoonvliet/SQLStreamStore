@@ -28,7 +28,7 @@
         /// </summary>
         /// <param name="settings">A settings class to configure this instance.</param>
         public PostgresStreamStore(PostgresStreamStoreSettings settings)
-            : base(settings.GetUtcNow, settings.LogName)
+            : base(settings.GetUtcNow, settings.LogName, settings.NewGapHandlingEnabled)
         {
             _settings = settings;
             _createConnection = () => _settings.ConnectionFactory(_settings.ConnectionString);

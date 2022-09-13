@@ -13,7 +13,6 @@
 
     using SqlStreamStore;
     using SqlStreamStore.Streams;
-    using Xunit;
 
     public class TestTailing : LoadTest
     {
@@ -43,23 +42,25 @@
                 var readLikeToken = new CancellationTokenSource();
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
                 Task.Run(() => RunSubscribe(streamStore, readPageSize), linkedToken.Token);
-                Enumerable.Range(0, 128).Select(_ => Task.Run(() => RunLike(streamStore, readLikeToken.Token), readLikeToken.Token)).ToList();
+                Enumerable.Range(0, 128)
+                    .Select(_ => Task.Run(() => RunLike(streamStore, readLikeToken.Token), readLikeToken.Token))
+                    .ToList();
 #pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
 
                 var sw = Stopwatch.StartNew();
                 var l = new List<(CancellationTokenSource source, Task task)>();
                 var maxConcurrent = 0;
-                while (sw.ElapsedMilliseconds < TimeSpan.FromMinutes(2).TotalMilliseconds)
+                while(sw.ElapsedMilliseconds < TimeSpan.FromMinutes(2).TotalMilliseconds)
                 {
                     var head = await streamStore.ReadHeadPosition(linkedToken.Token);
 
-                    lock (s_lock)
+                    lock(s_lock)
                     {
                         var subscriptionPosition = s_db.LastOrDefault();
 
                         Output.WriteLine($"Head: {head}, Subscription: {subscriptionPosition}");
 
-                        if (head > subscriptionPosition + 1000)
+                        if(head > subscriptionPosition + 1000)
                         {
                             if(l.Any())
                             {
@@ -71,16 +72,16 @@
                                 maxConcurrent--;
                             }
                         }
-                        else if (maxConcurrent < 100)
+                        else if(maxConcurrent < 100)
                         {
                             var cts = new CancellationTokenSource();
                             var t = Task.Run(() =>
-                                RunWrites(cts.Token,
-                                    numberOfMessagesPerAmend,
-                                    numberOfStreams,
-                                    l.Count * numberOfStreams,
-                                    jsonData,
-                                    streamStore),
+                                    RunWrites(cts.Token,
+                                        numberOfMessagesPerAmend,
+                                        numberOfStreams,
+                                        l.Count * numberOfStreams,
+                                        jsonData,
+                                        streamStore),
                                 cts.Token);
                             l.Add((cts, t));
 
@@ -136,10 +137,9 @@
 
                 lock(s_lock)
                 {
-                    Assert.True(db.SequenceEqual(s_db));
+                    Output.WriteLine(!db.SequenceEqual(s_db) ? "DONE WITH GAPS" : "Done without gaps");
                 }
 
-                Output.WriteLine("Done");
             }
             finally
             {
@@ -199,9 +199,10 @@
             int count = 1;
             for (int i = 0; i < numberOfStreams; i++)
             {
-                ct.ThrowIfCancellationRequested();
                 try
                 {
+                    ct.ThrowIfCancellationRequested();
+
                     for(int j = 0; j < numberOfMessagesPerAmend; j++)
                     {
                         messageNumbers[j] = count++;
@@ -221,12 +222,12 @@
                 {
                     // just timeout
                 }
-                catch(TaskCanceledException ex)
+                catch(OperationCanceledException ex)
                 {
                     Output.WriteLine(ex.ToString());
                     break;
                 }
-                catch (Exception ex) when (!(ex is TaskCanceledException))
+                catch (Exception ex) when (!(ex is OperationCanceledException))
                 {
                     Output.WriteLine(ex.ToString());
                     break;

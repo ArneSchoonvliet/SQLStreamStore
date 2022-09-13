@@ -31,8 +31,14 @@
 
             var (readAllResult, transactionIdsInProgress) = await ReadAllForwards(fromPositionExclusive, null, maxCount, prefetch, correlation, cancellationToken);
 
-            var gapHandleResult = await HandleGaps(readAllResult, transactionIdsInProgress, fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken);
-
+            var gapHandleResult = await HandleGaps(readAllResult,
+                transactionIdsInProgress,
+                fromPositionExclusive,
+                maxCount,
+                prefetch,
+                correlation,
+                cancellationToken);
+            
             readAllResult = gapHandleResult.ReadAllResult;
 
             if (!readAllResult.Any())
@@ -40,19 +46,11 @@
                 return new ReadAllPage(
                     fromPositionExclusive,
                     fromPositionExclusive,
-                    true,
+                    gapHandleResult.isEnd,
                     ReadDirection.Forward,
                     readNext,
                     Array.Empty<StreamMessage>());
             }
-
-            //bool isEnd = true;
-
-            //if (readAllResult.Count == maxCount + 1) // An extra row was read, we're not at the end
-            //{
-            //    isEnd = false;
-            //    readAllResult.RemoveAt(maxCount);
-            //}
 
             var filteredMessages = FilterExpired(readAllResult);
 
@@ -146,12 +144,7 @@
 
         private static bool IsEnd(int messageCount, int maxCount)
         {
-            bool isEnd = true;
-
-            if (messageCount == maxCount + 1) // An extra row was read, we're not at the end
-            {
-                isEnd = false;
-            }
+            bool isEnd = messageCount != maxCount + 1;
 
             return isEnd;
         }
@@ -165,6 +158,19 @@
             Guid correlation,
             CancellationToken cancellationToken)
         {
+            if(!_settings.NewGapHandlingEnabled)
+            {
+                bool isEnd = true;
+                
+                if (readAllResult.Count == maxCount + 1) // An extra row was read, we're not at the end
+                {
+                    isEnd = false;
+                    readAllResult.RemoveAt(maxCount);
+                }
+
+                return (readAllResult, isEnd);
+            }
+
             var messages = readAllResult.Select(x => x.message).ToList();
 
             // We need to remove the last message if we read past the actual maxCount, otherwise gap checking will not be correct as last message is one with default values

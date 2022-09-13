@@ -16,17 +16,21 @@
         /// Initializes a new instance of <see cref="PostgresStreamStoreSettings"/>.
         /// </summary>
         /// <param name="connectionString">The connection string.</param>
-        public PostgresStreamStoreSettings(string connectionString)
+        /// <param name="newGapHandlingEnabled"></param>
+        public PostgresStreamStoreSettings(string connectionString, bool newGapHandlingEnabled)
         {
             Ensure.That(connectionString, nameof(connectionString)).IsNotNullOrWhiteSpace();
 
             ConnectionString = connectionString;
+            NewGapHandlingEnabled = newGapHandlingEnabled;
         }
 
         /// <summary>
         ///     Gets the connection string.
         /// </summary>
         public string ConnectionString { get; }
+
+        public bool NewGapHandlingEnabled { get; }
 
         /// <summary>
         ///     Allows overriding of the stream store notifier. The default implementation

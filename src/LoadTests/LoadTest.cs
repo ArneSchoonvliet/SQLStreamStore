@@ -23,7 +23,12 @@
                     {
                         var fixture = new PostgresStreamStoreDb("dbo");
                         Console.WriteLine(fixture.ConnectionString);
-                        streamStore = await fixture.GetPostgresStreamStore(true);
+                        
+                        var gapHandlingInput = Input.ReadString("Use new gap handling (y/n): ");
+
+                        var newGapHandlingEnabled = gapHandlingInput.ToLower() == "y";
+                        
+                        streamStore = await fixture.GetPostgresStreamStore(newGapHandlingEnabled);
                         disposable = fixture;
                     })
                 .Add("Postgres (Server)",
@@ -33,7 +38,12 @@
                         var connectionString = Console.ReadLine();
                         var postgresStreamStoreDb = new PostgresStreamStoreDb("dbo", connectionString);
                         Console.WriteLine(postgresStreamStoreDb.ConnectionString);
-                        streamStore = await postgresStreamStoreDb.GetPostgresStreamStore(true);
+                        
+                        var gapHandlingInput = Input.ReadString("Use new gap handling (y/n): ");
+
+                        var newGapHandlingEnabled = gapHandlingInput.ToLower() == "y";
+                        
+                        streamStore = await postgresStreamStoreDb.GetPostgresStreamStore(newGapHandlingEnabled);
                         disposable = postgresStreamStoreDb;
                     })
                 .Display(cancellationToken);

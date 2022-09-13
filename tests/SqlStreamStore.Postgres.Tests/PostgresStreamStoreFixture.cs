@@ -16,14 +16,15 @@ namespace SqlStreamStore
             string schema,
             PostgresContainer dockerInstance,
             string databaseName,
-            Action onDispose)
+            Action onDispose,
+            bool newGapHandlingEnabled)
         {
             _onDispose = onDispose;
 
             DatabaseName = databaseName;
             var connectionString = dockerInstance.ConnectionString;
 
-            _settings = new PostgresStreamStoreSettings(connectionString)
+            _settings = new PostgresStreamStoreSettings(connectionString, newGapHandlingEnabled)
             {
                 Schema = schema,
                 GetUtcNow = () => GetUtcNow(),

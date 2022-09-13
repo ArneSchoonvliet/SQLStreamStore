@@ -21,25 +21,29 @@ namespace SqlStreamStore.Infrastructure
         private bool _isDisposed;
         private readonly MetadataMaxAgeCache _metadataMaxAgeCache;
         private readonly bool _disableMetadataCache;
+        private readonly bool _newGapHandlingEnabled;
 
         protected ReadonlyStreamStoreBase(
             TimeSpan metadataMaxAgeCacheExpiry,
             int metadataMaxAgeCacheMaxSize,
             GetUtcNow getUtcNow,
-            string logName)
+            string logName, bool newGapHandlingEnabled)
         {
             GetUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
             Logger = LogProvider.GetLogger(logName);
 
             _metadataMaxAgeCache = new MetadataMaxAgeCache(this, metadataMaxAgeCacheExpiry,
                 metadataMaxAgeCacheMaxSize, GetUtcNow);
+            
+            _newGapHandlingEnabled = newGapHandlingEnabled;
         }
 
-        protected ReadonlyStreamStoreBase(GetUtcNow getUtcNow, string logName)
+        protected ReadonlyStreamStoreBase(GetUtcNow getUtcNow, string logName, bool newGapHandlingEnabled)
         {
             GetUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
             Logger = LogProvider.GetLogger(logName);
             _disableMetadataCache = true;
+            _newGapHandlingEnabled = newGapHandlingEnabled;
         }
 
         public async Task<ReadAllPage> ReadAllForwards(
@@ -62,31 +66,39 @@ namespace SqlStreamStore.Infrastructure
             var page = await ReadAllForwardsInternal(fromPositionInclusive, maxCount, prefetchJsonData, ReadNext, cancellationToken)
                 .ConfigureAwait(false);
 
-            //// https://github.com/damianh/SqlStreamStore/issues/31
-            //// Under heavy parallel load, gaps may appear in the position sequence due to sequence
-            //// number reservation of in-flight transactions.
-            //// Here we check if there are any gaps, and in the unlikely event there is, we delay a little bit
-            //// and re-issue the read. This is expected
-            //if (!page.IsEnd || page.Messages.Length <= 1)
-            //{
-            //    return await FilterExpired(page, ReadNext, cancellationToken).ConfigureAwait(false);
-            //}
 
-            //// Check for gap between last page and this.
-            //if (page.Messages[0].Position != fromPositionInclusive)
-            //{
-            //    page = await ReloadAfterDelay(fromPositionInclusive, maxCount, prefetchJsonData, ReadNext, cancellationToken);
-            //}
 
-            //// check for gap in messages collection
-            //for (int i = 0; i < page.Messages.Length - 1; i++)
-            //{
-            //    if (page.Messages[i].Position + 1 != page.Messages[i + 1].Position)
-            //    {
-            //        page = await ReloadAfterDelay(fromPositionInclusive, maxCount, prefetchJsonData, ReadNext, cancellationToken);
-            //        break;
-            //    }
-            //}
+            if(_newGapHandlingEnabled)
+            {
+                // Gaps are handled with db specific functionality
+                return await FilterExpired(page, ReadNext, cancellationToken).ConfigureAwait(false);
+            }
+
+            // https://github.com/damianh/SqlStreamStore/issues/31
+            // Under heavy parallel load, gaps may appear in the position sequence due to sequence
+            // number reservation of in-flight transactions.
+            // Here we check if there are any gaps, and in the unlikely event there is, we delay a little bit
+            // and re-issue the read. This is expected
+            
+            if (!page.IsEnd || page.Messages.Length <= 1)
+            {
+                return await FilterExpired(page, ReadNext, cancellationToken).ConfigureAwait(false);
+            }
+            
+            // Check for gap between last page and this.
+            if (page.Messages[0].Position != fromPositionInclusive)
+            {
+                page = await ReloadAfterDelay(fromPositionInclusive, maxCount, prefetchJsonData, ReadNext, cancellationToken);
+            }
+            
+            // check for gap in messages collection
+            for (int i = 0; i < page.Messages.Length - 1; i++)
+            {
+                if(page.Messages[i].Position + 1 == page.Messages[i + 1].Position)
+                    continue;
+                page = await ReloadAfterDelay(fromPositionInclusive, maxCount, prefetchJsonData, ReadNext, cancellationToken);
+                break;
+            }
 
             return await FilterExpired(page, ReadNext, cancellationToken).ConfigureAwait(false);
         }
