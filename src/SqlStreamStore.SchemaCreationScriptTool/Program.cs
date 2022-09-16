@@ -52,7 +52,7 @@
                     var postgresSettings = new PostgresStreamStoreSettings(new NpgsqlConnectionStringBuilder
                     {
                         Host = "0.0.0.0"
-                    }.ConnectionString, false);
+                    }.ConnectionString);
                     if(!string.IsNullOrEmpty(Schema))
                     {
                         postgresSettings.Schema = Schema;

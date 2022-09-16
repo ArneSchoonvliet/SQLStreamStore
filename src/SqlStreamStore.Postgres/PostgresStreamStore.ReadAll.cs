@@ -106,7 +106,7 @@
 
                     if (!reader.HasRows)
                     {
-                        return (new List<(StreamMessage message, int? maxAge)>(), null);
+                        return (new List<(StreamMessage message, int? maxAge)>(), new TxIdList());
                     }
 
                     var messages = new List<(StreamMessage message, int? maxAge)>();
@@ -158,15 +158,11 @@
             Guid correlation,
             CancellationToken cancellationToken)
         {
-            if(!_settings.NewGapHandlingEnabled)
+            if(_settings.GapHandlingSettings == null)
             {
-                bool isEnd = true;
-                
-                if (readAllResult.Count == maxCount + 1) // An extra row was read, we're not at the end
-                {
-                    isEnd = false;
+               var isEnd = IsEnd(readAllResult.Count, maxCount);
+                if (!isEnd)
                     readAllResult.RemoveAt(maxCount);
-                }
 
                 return (readAllResult, isEnd);
             }
@@ -225,13 +221,12 @@
             // When transactions are in progress and no messages we need to start polling. It could by all means be possible that all the messages are still in flight transactions.
             // We will not poll transactions and set isEnd to false;
             // TODO: check if isEnd to false really is a desired behaviour. It might make more sense to have it on true. 
-            if (!hasMessages)
+            if (!hasMessages) // TODO: check for transactions???
             {
                 Logger.InfoFormat("{correlation} No messages found, but transactions: {transactions} in progress. We will return empty list of messages with isEnd to false", correlation, messages);
                 return (new List<(StreamMessage message, int? maxAge)>(), false);
             }
 
-            // TODO: trasactionInProgress can be NULL: we need to check how and what to do with it.
             if (!transactionsInProgress.Any())
             {
                 Logger.InfoFormat("{correlation} No transactions in progress, no need for gap checking", correlation);
@@ -337,10 +332,9 @@
                       Parameters.Name(connection.Database),
                       Parameters.TransactionIds(transactionIds)))
             {
-                var result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+                var result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as bool?;
 
-                // TODO: Check if okay => function shouldn't give back NULL => but maybe include null check
-                return (bool)result;
+                return result ?? false;
             }
         }
 

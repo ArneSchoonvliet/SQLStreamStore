@@ -28,7 +28,7 @@
 
                         var newGapHandlingEnabled = gapHandlingInput.ToLower() == "y";
                         
-                        streamStore = await fixture.GetPostgresStreamStore(newGapHandlingEnabled);
+                        streamStore = await fixture.GetPostgresStreamStore(newGapHandlingEnabled ? new IntigritiGapHandlingSettings(true, 500, 1000) : null);
                         disposable = fixture;
                     })
                 .Add("Postgres (Server)",
@@ -43,7 +43,7 @@
 
                         var newGapHandlingEnabled = gapHandlingInput.ToLower() == "y";
                         
-                        streamStore = await postgresStreamStoreDb.GetPostgresStreamStore(newGapHandlingEnabled);
+                        streamStore = await postgresStreamStoreDb.GetPostgresStreamStore(newGapHandlingEnabled ? new IntigritiGapHandlingSettings(true, 500, 1000) : null);
                         disposable = postgresStreamStoreDb;
                     })
                 .Display(cancellationToken);

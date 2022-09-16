@@ -21,13 +21,13 @@ namespace SqlStreamStore.Infrastructure
         private bool _isDisposed;
         private readonly MetadataMaxAgeCache _metadataMaxAgeCache;
         private readonly bool _disableMetadataCache;
-        private readonly bool _newGapHandlingEnabled;
+        private readonly IntigritiGapHandlingSettings _gapHandlingSettings;
 
         protected ReadonlyStreamStoreBase(
             TimeSpan metadataMaxAgeCacheExpiry,
             int metadataMaxAgeCacheMaxSize,
             GetUtcNow getUtcNow,
-            string logName, bool newGapHandlingEnabled)
+            string logName, IntigritiGapHandlingSettings gapHandlingSettings)
         {
             GetUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
             Logger = LogProvider.GetLogger(logName);
@@ -35,15 +35,15 @@ namespace SqlStreamStore.Infrastructure
             _metadataMaxAgeCache = new MetadataMaxAgeCache(this, metadataMaxAgeCacheExpiry,
                 metadataMaxAgeCacheMaxSize, GetUtcNow);
             
-            _newGapHandlingEnabled = newGapHandlingEnabled;
+            _gapHandlingSettings = gapHandlingSettings;
         }
 
-        protected ReadonlyStreamStoreBase(GetUtcNow getUtcNow, string logName, bool newGapHandlingEnabled)
+        protected ReadonlyStreamStoreBase(GetUtcNow getUtcNow, string logName, IntigritiGapHandlingSettings gapHandlingSettings)
         {
             GetUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
             Logger = LogProvider.GetLogger(logName);
             _disableMetadataCache = true;
-            _newGapHandlingEnabled = newGapHandlingEnabled;
+            _gapHandlingSettings = gapHandlingSettings;
         }
 
         public async Task<ReadAllPage> ReadAllForwards(
@@ -68,9 +68,9 @@ namespace SqlStreamStore.Infrastructure
 
 
 
-            if(_newGapHandlingEnabled)
+            if(_gapHandlingSettings != null)
             {
-                // Gaps are handled with db specific functionality
+                // Gaps are handled on a lower level
                 return await FilterExpired(page, ReadNext, cancellationToken).ConfigureAwait(false);
             }
 

@@ -16,13 +16,15 @@
         /// Initializes a new instance of <see cref="PostgresStreamStoreSettings"/>.
         /// </summary>
         /// <param name="connectionString">The connection string.</param>
-        /// <param name="newGapHandlingEnabled"></param>
-        public PostgresStreamStoreSettings(string connectionString, bool newGapHandlingEnabled)
+        /// <param name="gapHandlingSettings">Settings that are used for gap handling</param>
+        public PostgresStreamStoreSettings(
+            string connectionString,
+            IntigritiGapHandlingSettings gapHandlingSettings = null)
         {
             Ensure.That(connectionString, nameof(connectionString)).IsNotNullOrWhiteSpace();
 
             ConnectionString = connectionString;
-            NewGapHandlingEnabled = newGapHandlingEnabled;
+            GapHandlingSettings = gapHandlingSettings;
         }
 
         /// <summary>
@@ -30,7 +32,10 @@
         /// </summary>
         public string ConnectionString { get; }
 
-        public bool NewGapHandlingEnabled { get; }
+        /// <summary>
+        ///    Settings that are used for gap handling.
+        /// </summary>
+        public IntigritiGapHandlingSettings GapHandlingSettings { get; }
 
         /// <summary>
         ///     Allows overriding of the stream store notifier. The default implementation
@@ -85,7 +90,7 @@
         /// </summary>
         public Func<string, NpgsqlConnection> ConnectionFactory
         {
-            get => _connectionFactory 
+            get => _connectionFactory
                    ?? (_connectionFactory = connectionString => new NpgsqlConnection(connectionString));
             set
             {

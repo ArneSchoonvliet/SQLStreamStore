@@ -38,7 +38,7 @@ namespace SqlStreamStore
         /// <param name="getUtcNow">Optional. A delegate to ge the current UTC now. Used to define generate timestamps.</param>
         /// <param name="logName">Optional. The name of the logger generated log messages will use.</param>
         public InMemoryStreamStore(GetUtcNow getUtcNow = null, string logName = null)
-            : base(TimeSpan.FromMinutes(1), 10000, getUtcNow, logName ?? nameof(InMemoryStreamStore), false)
+            : base(TimeSpan.FromMinutes(1), 10000, getUtcNow, logName ?? nameof(InMemoryStreamStore), null)
         {
             _getUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
             _allStream.AddFirst(new InMemoryStreamMessage(

@@ -23,14 +23,14 @@ namespace SqlStreamStore.Infrastructure
         /// <param name="metadataMaxAgeCacheMaxSize"></param>
         /// <param name="getUtcNow"></param>
         /// <param name="logName"></param>
-        /// <param name="newGapHandlingEnabled"></param>
+        /// <param name="gapHandlingSettings"></param>
         protected StreamStoreBase(
             TimeSpan metadataMaxAgeCacheExpiry,
             int metadataMaxAgeCacheMaxSize,
             GetUtcNow getUtcNow,
             string logName,
-            bool newGapHandlingEnabled)
-            : base(metadataMaxAgeCacheExpiry, metadataMaxAgeCacheMaxSize, getUtcNow, logName, newGapHandlingEnabled)
+            IntigritiGapHandlingSettings gapHandlingSettings)
+            : base(metadataMaxAgeCacheExpiry, metadataMaxAgeCacheMaxSize, getUtcNow, logName, gapHandlingSettings)
         { }
 
         /// <summary>
@@ -38,8 +38,9 @@ namespace SqlStreamStore.Infrastructure
         /// </summary>
         /// <param name="getUtcNow"></param>
         /// <param name="logName"></param>
-        protected StreamStoreBase(GetUtcNow getUtcNow, string logName, bool newGapHandlingEnabled)
-            : base(getUtcNow, logName, newGapHandlingEnabled)
+        /// <param name="gapHandlingSettings"></param>
+        protected StreamStoreBase(GetUtcNow getUtcNow, string logName, IntigritiGapHandlingSettings gapHandlingSettings)
+            : base(getUtcNow, logName, gapHandlingSettings)
         { }
 
         /// <inheritdoc />

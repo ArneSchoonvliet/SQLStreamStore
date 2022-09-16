@@ -30,20 +30,20 @@
             _databaseManager = new PostgresContainer($"test_{Guid.NewGuid():n}");
         }
 
-        public async Task<PostgresStreamStore> GetPostgresStreamStore(bool newGapHandlingEnabled, bool scavengeAsynchronously = false)
+        public async Task<PostgresStreamStore> GetPostgresStreamStore(IntigritiGapHandlingSettings gapHandlingSettings, bool scavengeAsynchronously = false)
         {
-            var store = await GetUninitializedPostgresStreamStore(newGapHandlingEnabled, scavengeAsynchronously);
+            var store = await GetUninitializedPostgresStreamStore(gapHandlingSettings, scavengeAsynchronously);
 
             await store.CreateSchemaIfNotExists();
 
             return store;
         }
 
-        public async Task<PostgresStreamStore> GetUninitializedPostgresStreamStore(bool newGapHandlingEnabled, bool scavengeAsynchronously = false)
+        public async Task<PostgresStreamStore> GetUninitializedPostgresStreamStore(IntigritiGapHandlingSettings gapHandlingSettings, bool scavengeAsynchronously = false)
         {
             await CreateDatabase();
 
-            var settings = new PostgresStreamStoreSettings(ConnectionString, newGapHandlingEnabled)
+            var settings = new PostgresStreamStoreSettings(ConnectionString, gapHandlingSettings)
             {
                 Schema = _schema,
                 ScavengeAsynchronously = scavengeAsynchronously
