@@ -10,10 +10,11 @@
     {
         public abstract Task Run(CancellationToken cancellationToken);
 
-        protected async Task<(IStreamStore, Action)> GetStore(CancellationToken cancellationToken)
+        protected async Task<(IStreamStore, Action, string)> GetStore(CancellationToken cancellationToken)
         {
             IStreamStore streamStore = null;
             IDisposable disposable = null;
+            string connectionString = null;
 
             Output.WriteLine(ConsoleColor.Yellow, "Store type:");
             await new Menu()
@@ -28,14 +29,15 @@
 
                         var newGapHandlingEnabled = gapHandlingInput.ToLower() == "y";
                         
-                        streamStore = await fixture.GetPostgresStreamStore(newGapHandlingEnabled ? new IntigritiGapHandlingSettings(true, 500, 1000) : null);
+                        streamStore = await fixture.GetPostgresStreamStore(newGapHandlingEnabled ? new IntigritiGapHandlingSettings(true, 6000, 12000) : null);
                         disposable = fixture;
+                        connectionString = fixture.ConnectionString;
                     })
                 .Add("Postgres (Server)",
                     async ct =>
                     {
                         Console.Write("Enter the connection string: ");
-                        var connectionString = Console.ReadLine();
+                        connectionString = Console.ReadLine();
                         var postgresStreamStoreDb = new PostgresStreamStoreDb("dbo", connectionString);
                         Console.WriteLine(postgresStreamStoreDb.ConnectionString);
                         
@@ -43,7 +45,7 @@
 
                         var newGapHandlingEnabled = gapHandlingInput.ToLower() == "y";
                         
-                        streamStore = await postgresStreamStoreDb.GetPostgresStreamStore(newGapHandlingEnabled ? new IntigritiGapHandlingSettings(true, 500, 1000) : null);
+                        streamStore = await postgresStreamStoreDb.GetPostgresStreamStore(newGapHandlingEnabled ? new IntigritiGapHandlingSettings(true, 6000, 12000) : null);
                         disposable = postgresStreamStoreDb;
                     })
                 .Display(cancellationToken);
@@ -54,7 +56,8 @@
                 {
                     streamStore.Dispose();
                     disposable?.Dispose();
-                });
+                },
+                connectionString);
         }
     }
 }

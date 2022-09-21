@@ -2,27 +2,29 @@
 {
     using System;
     using System.Collections.Generic;
+    using System.Data;
     using System.Diagnostics;
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
-
     using EasyConsole;
-
     using Microsoft.Data.SqlClient;
-
+    using Npgsql;
     using SqlStreamStore;
+    using SqlStreamStore.Infrastructure;
+    using SqlStreamStore.PgSqlScripts;
     using SqlStreamStore.Streams;
 
-    public class TestTailing : LoadTest
+    public class TestDeadlock : LoadTest
     {
         private static readonly object s_lock = new object();
         private static readonly List<long> s_db = new List<long>();
         private static IAllStreamSubscription s_subscription;
+
         public override async Task Run(CancellationToken ct)
         {
             Output.WriteLine("");
-            Output.WriteLine(ConsoleColor.Green, "Appends events to streams and reads them all back in a single task.");
+            Output.WriteLine(ConsoleColor.Green, "Test for the deadlock settings");
             Output.WriteLine("");
 
             var (streamStore, dispose, connectionString) = await GetStore(ct);
@@ -46,6 +48,9 @@
                     .Select(_ => Task.Run(() => RunLike(streamStore, readLikeToken.Token), readLikeToken.Token))
                     .ToList();
 #pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
+
+
+                var transactionTask = Task.Run(() => AddTransaction(connectionString, ct));
 
                 var sw = Stopwatch.StartNew();
                 var l = new List<(CancellationTokenSource source, Task task)>();
@@ -103,6 +108,8 @@
 
                 await Task.WhenAll(l.Select(x => x.task).Where(t => !t.IsCanceled));
 
+                await transactionTask;
+
                 Output.WriteLine("Writes finished");
 
 
@@ -137,11 +144,10 @@
 
                 lock(s_lock)
                 {
-                    Output.WriteLine(!db.SequenceEqual(s_db) ? "DONE WITH SKIPPED EVENT" : "Done without skipped event");
+                    Output.WriteLine(!db.SequenceEqual(s_db) ? "DONE WITH GAPS" : "Done without gaps");
                 }
-
             }
-            finally 
+            finally
             {
                 dispose();
             }
@@ -168,18 +174,114 @@
             }
         }
 
+        private static async Task AddTransaction(string connectionString, CancellationToken cancellationToken)
+        {
+            var delayMillis = (int)TimeSpan.FromSeconds(20).TotalMilliseconds;
+            
+            await Task.Delay(delayMillis, cancellationToken);
+
+            var expectedVersion = -1;
+
+            var streamId = $"transactiontest/{Guid.NewGuid()}";
+
+            var schema = new Schema("dbo");
+
+            AppendResult result;
+            
+            var streamIdInfo = new StreamIdInfo(streamId);
+
+            var messages = new List<NewStreamMessage>
+            {
+                new NewStreamMessage(Guid.NewGuid(), "TestTransaction", "{}")
+            }.ToArray();
+
+            using(var connection = await OpenConnection(connectionString, cancellationToken))
+            using(var transaction = connection.BeginTransaction())
+            using(var command = BuildFunctionCommand(
+                      schema.AppendToStream,
+                      transaction,
+                      Parameters.StreamId(streamIdInfo.PostgresqlStreamId),
+                      Parameters.StreamIdOriginal(streamIdInfo.PostgresqlStreamId),
+                      Parameters.MetadataStreamId(streamIdInfo.MetadataPosgresqlStreamId),
+                      Parameters.ExpectedVersion(expectedVersion),
+                      Parameters.CreatedUtc(SystemClock.GetUtcNow.Invoke()),
+                      Parameters.NewStreamMessages(messages)))
+            {
+                try
+                {
+                    using(var reader = await command
+                              .ExecuteReaderAsync(cancellationToken)
+                              .ConfigureAwait(false))
+                    {
+                        await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+
+                        result = new AppendResult(reader.GetInt32(0), reader.GetInt64(1));
+                    }
+
+
+                    await Task.Delay(TimeSpan.FromMinutes(3));
+
+                    // await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch(PostgresException ex) when(ex.IsWrongExpectedVersion())
+                {
+                    await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+
+                    throw new WrongExpectedVersionException(
+                        ErrorMessages.AppendFailedWrongExpectedVersion(streamIdInfo.PostgresqlStreamId.IdOriginal,
+                            expectedVersion),
+                        streamIdInfo.PostgresqlStreamId.IdOriginal,
+                        expectedVersion,
+                        ex);
+                }
+            }
+        }
+
+
+        private static async Task<NpgsqlConnection> OpenConnection(string connectionString, CancellationToken cancellationToken)
+        {
+            var connection = new NpgsqlConnection(connectionString);
+            var schema = new Schema("dbo");
+
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+            connection.ReloadTypes();
+
+            connection.TypeMapper.MapComposite<PostgresNewStreamMessage>(schema.NewStreamMessage);
+
+            return connection;
+        }
+
+        private static NpgsqlCommand BuildFunctionCommand(
+            string function,
+            NpgsqlTransaction transaction,
+            params NpgsqlParameter[] parameters)
+        {
+            var command = new NpgsqlCommand(function, transaction.Connection, transaction)
+            {
+                CommandType = CommandType.StoredProcedure,
+            };
+
+            foreach(var parameter in parameters)
+            {
+                command.Parameters.Add(parameter);
+            }
+
+            return command;
+        }
+
+
         private static Task RunSubscribe(IStreamStore streamStore, int readPageSize)
         {
             s_subscription = streamStore.SubscribeToAll(
                 null,
                 (_, m, ___) =>
                 {
-                    lock (s_lock)
+                    lock(s_lock)
                     {
                         s_db.Add(m.Position);
                         return Task.CompletedTask;
                     }
-
                 });
             s_subscription.MaxCountPerRead = readPageSize;
 
@@ -197,7 +299,7 @@
             var stopwatch = Stopwatch.StartNew();
             var messageNumbers = new int[numberOfMessagesPerAmend];
             int count = 1;
-            for (int i = 0; i < numberOfStreams; i++)
+            for(int i = 0; i < numberOfStreams; i++)
             {
                 try
                 {
@@ -227,12 +329,13 @@
                     Output.WriteLine(ex.ToString());
                     break;
                 }
-                catch (Exception ex) when (!(ex is OperationCanceledException))
+                catch(Exception ex) when(!(ex is OperationCanceledException))
                 {
                     Output.WriteLine(ex.ToString());
                     break;
                 }
             }
+
             stopwatch.Stop();
             var rate = Math.Round((decimal)count / stopwatch.ElapsedMilliseconds * 1000, 0);
 

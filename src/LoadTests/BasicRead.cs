@@ -16,7 +16,7 @@ internal class BasicRead : LoadTest
             Output.WriteLine(ConsoleColor.Green, "Appends events to a single stream and reads all");
             Output.WriteLine("");
 
-            var (streamStore, dispose) = await GetStore(ct);
+            var (streamStore, dispose, connectionString) = await GetStore(ct);
 
             try
             {

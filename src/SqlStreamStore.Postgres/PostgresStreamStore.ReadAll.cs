@@ -210,7 +210,7 @@
                 {
                     isEnd = false;
                 }
-                else
+                else if (readResultToReturn.Count == maxCount + 1)
                 {
                     readResultToReturn.RemoveAt(maxCount);
                 }
@@ -281,26 +281,21 @@
             int delayTime = 0;
             long totalTime = 0;
 
-            // TODO: Make global config;
-            var allowSkip = true;
-            var possibleDeadlockTime = TimeSpan.FromMinutes(1).TotalMilliseconds;
-            var possibleAllowedSkipTime = TimeSpan.FromMinutes(2).TotalMilliseconds;
-
             var sw = Stopwatch.StartNew();
             do
             {
                 stillInProgress = await ReadAnyTransactionsInProgress(transactionsInProgress, cancellationToken);
                 Logger.InfoFormat("{correlation} Transactions still pending. Query 'ReadAnyTransactionsInProgress' took: {timeTaken}ms", correlation, sw.ElapsedMilliseconds);
 
-                if (allowSkip && totalTime > possibleAllowedSkipTime)
+                if (_settings.GapHandlingSettings.AllowSkip && totalTime > _settings.GapHandlingSettings.PossibleAllowedSkipTime)
                 {
-                    Logger.ErrorFormat("{correlation} Possible SKIPPED EVENT as we will stop waiting for in progress transactions! One of these transactions: {transactions} is in progress for longer then {totalTime}ms", correlation, transactionsInProgress);
+                    Logger.ErrorFormat("{correlation} Possible SKIPPED EVENT as we will stop waiting for in progress transactions! One of these transactions: {transactions} is in progress for longer then {totalTime}ms", correlation, transactionsInProgress, _settings.GapHandlingSettings.PossibleAllowedSkipTime);
                     return;
                 }
 
-                if (totalTime > possibleDeadlockTime)
+                if (totalTime > _settings.GapHandlingSettings.PossibleDeadlockTime)
                 {
-                    Logger.ErrorFormat("{correlation} Possible DEADLOCK! One of these transactions: {transactions} is in progress for longer then {totalTime}ms", correlation, transactionsInProgress, totalTime);
+                    Logger.ErrorFormat("{correlation} Possible DEADLOCK! One of these transactions: {transactions} is in progress for longer then {totalTime}ms", correlation, transactionsInProgress, _settings.GapHandlingSettings.PossibleDeadlockTime);
                 }
 
 
