@@ -43,8 +43,13 @@ BEGIN
   RETURN NEXT _messages;
 
   OPEN _txinfo FOR
-  SELECT txid_snapshot_xip(txid_current_snapshot());
+
+    SELECT tid, l.mode
+    FROM txid_snapshot_xip(txid_current_snapshot()) tid
+    INNER JOIN pg_locks l on l.transactionid::TEXT::BIGINT = tid;
+
   RETURN NEXT _txinfo;
+
 END;
 $F$
 LANGUAGE 'plpgsql';
