@@ -1,6 +1,7 @@
 ﻿namespace SqlStreamStore.PgSqlScripts
 {
     using System;
+    using System.Linq;
     using Npgsql;
     using NpgsqlTypes;
     using SqlStreamStore.Infrastructure;
@@ -139,7 +140,7 @@
         {
             return new NpgsqlParameter<long[]>
             {
-                Value = value.ToArray()
+                Value = value.Select(v => v.Id).ToArray()
             };
         }
 

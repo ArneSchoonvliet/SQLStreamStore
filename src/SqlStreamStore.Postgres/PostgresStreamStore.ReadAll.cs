@@ -130,7 +130,10 @@
                     await reader.NextResultAsync(cancellationToken).ConfigureAwait(false);
                     while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                     {
-                        transactionIdsInProgress.Add(await reader.GetFieldValueAsync<long>(0, cancellationToken));
+                        var tId = (long)reader["tid"];
+                        var lockMode = reader["mode"] as string;
+
+                        transactionIdsInProgress.Add(new TransactionInfo(tId, lockMode));
                     }
 
                     Logger.InfoFormat("{correlation} Query 'ReadAllForwards' took: {timeTaken}ms", correlation, sw.ElapsedMilliseconds);
@@ -227,7 +230,9 @@
                 return (new List<(StreamMessage message, int? maxAge)>(), false);
             }
 
-            if (!transactionsInProgress.Any())
+            var lockModes = new[] { "ExclusiveLock" };
+
+            if(!transactionsInProgress.Any(tinfo => tinfo.LockMode == null || lockModes.Contains(tinfo.LockMode)))
             {
                 Logger.InfoFormat("{correlation} No transactions in progress, no need for gap checking", correlation);
 
