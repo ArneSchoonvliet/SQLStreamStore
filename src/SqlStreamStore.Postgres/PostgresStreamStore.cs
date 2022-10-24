@@ -85,7 +85,7 @@
                         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                     }
 
-                    using(var command = BuildCommand(_schema.Definition, transaction))
+                    using(var command = BuildCommand(_schema.Definition(_settings.Version), transaction))
                     {
                         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                     }
@@ -257,7 +257,7 @@
         /// <returns>The database creation script.</returns>
         public string GetSchemaCreationScript()
         {
-            return _schema.Definition;
+            return _schema.Definition(_settings.Version);
         }
 
         /// <summary>

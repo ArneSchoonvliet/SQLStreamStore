@@ -35,6 +35,7 @@
         private string ListStreams => GetScript(nameof(ListStreams));
         private string ListStreamsStartingWith => GetScript(nameof(ListStreamsStartingWith));
         private string ListStreamsEndingWith => GetScript(nameof(ListStreamsEndingWith));
+        private string ReadAllOld => GetScript(nameof(ReadAllOld));
         private string ReadAll => GetScript(nameof(ReadAll));
 
         private string Read => GetScript(nameof(Read));
@@ -59,7 +60,7 @@
 
         public string Migration => GetScript(nameof(Migration));
 
-        public string CreateSchema => string.Join(
+        public string CreateSchema(Version version) => string.Join(
             Environment.NewLine,
             Tables,
             AppendToStream,
@@ -70,7 +71,7 @@
             ListStreamsStartingWith,
             ListStreamsEndingWith,
             Read,
-            ReadAll,
+            version < new Version("13.0") ? ReadAllOld : ReadAll,
             ReadJsonData,
             ReadHeadPosition,
             ReadStreamHeadPosition,

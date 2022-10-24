@@ -1,11 +1,13 @@
 ﻿namespace SqlStreamStore.PgSqlScripts
 {
+    using System;
+
     internal class Schema
     {
         private readonly string _schema;
         private readonly Scripts _scripts;
 
-        public string Definition => _scripts.CreateSchema;
+        public string Definition(Version version) => _scripts.CreateSchema(version);
         public string Migration => _scripts.Migration;
         public string DropAll => _scripts.DropAll;
         public string EnableExplainAnalyze => _scripts.EnableExplainAnalyze;

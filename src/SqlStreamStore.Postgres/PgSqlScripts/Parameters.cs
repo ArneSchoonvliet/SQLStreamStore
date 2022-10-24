@@ -140,7 +140,7 @@
         {
             return new NpgsqlParameter<long[]>
             {
-                Value = value.Select(v => v.Id).ToArray()
+                Value = value.ToArray()
             };
         }
 
@@ -204,20 +204,6 @@
                 NpgsqlDbType = NpgsqlDbType.Bigint,
                 TypedValue = value
             };
-        }
-
-        public static NpgsqlParameter OptionalPosition(long? value)
-        {
-            return value.HasValue
-                ? (NpgsqlParameter) new NpgsqlParameter<long>
-                {
-                    NpgsqlDbType = NpgsqlDbType.Bigint,
-                    TypedValue = value.Value
-                }
-                : new NpgsqlParameter<DBNull>
-                {
-                    TypedValue = DBNull.Value
-                };
         }
 
         public static NpgsqlParameter OptionalMaxAge(int? value)

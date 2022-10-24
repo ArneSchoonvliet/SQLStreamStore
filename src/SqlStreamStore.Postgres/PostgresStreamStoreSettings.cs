@@ -19,12 +19,15 @@
         /// <param name="gapHandlingSettings">Settings that are used for gap handling</param>
         public PostgresStreamStoreSettings(
             string connectionString,
+            Version version,
             IntigritiGapHandlingSettings gapHandlingSettings = null)
         {
             Ensure.That(connectionString, nameof(connectionString)).IsNotNullOrWhiteSpace();
+            Ensure.That(version, nameof(version)).IsNotNull();
 
             ConnectionString = connectionString;
             GapHandlingSettings = gapHandlingSettings;
+            Version = version;
         }
 
         /// <summary>
@@ -36,6 +39,12 @@
         ///    Settings that are used for gap handling.
         /// </summary>
         public IntigritiGapHandlingSettings GapHandlingSettings { get; }
+
+        
+        /// <summary>
+        ///    Postgresql version
+        /// </summary>
+        public Version Version { get; }
 
         /// <summary>
         ///     Allows overriding of the stream store notifier. The default implementation

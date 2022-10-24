@@ -2,6 +2,7 @@
 {
     using System;
     using System.Collections.Generic;
+    using System.Data;
     using System.Diagnostics;
     using System.Linq;
     using System.Threading;
@@ -11,7 +12,11 @@
 
     using Microsoft.Data.SqlClient;
 
+    using Npgsql;
+
     using SqlStreamStore;
+    using SqlStreamStore.Infrastructure;
+    using SqlStreamStore.PgSqlScripts;
     using SqlStreamStore.Streams;
 
     public class TestTailing : LoadTest
@@ -25,7 +30,8 @@
             Output.WriteLine(ConsoleColor.Green, "Appends events to streams and reads them all back in a single task.");
             Output.WriteLine("");
 
-            var (streamStore, dispose, connectionString) = await GetStore(ct);
+            const string scheme = "tailing";
+            var (streamStore, dispose, connectionString) = await GetStore(ct, scheme);
 
             try
             {
@@ -39,72 +45,115 @@
 
 
                 var linkedToken = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                var readLikeToken = new CancellationTokenSource();
+
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
                 Task.Run(() => RunSubscribe(streamStore, readPageSize), linkedToken.Token);
-                Enumerable.Range(0, 128)
-                    .Select(_ => Task.Run(() => RunLike(streamStore, readLikeToken.Token), readLikeToken.Token))
-                    .ToList();
 #pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
 
                 var sw = Stopwatch.StartNew();
-                var l = new List<(CancellationTokenSource source, Task task)>();
-                var maxConcurrent = 0;
-                while(sw.ElapsedMilliseconds < TimeSpan.FromMinutes(2).TotalMilliseconds)
+                var concurrentWrite = new List<(CancellationTokenSource source, Task task)>();
+                var concurrentDelayedTx = new List<(CancellationTokenSource source, Task task)>();
+
+                var maxConcurrent = 20;
+                var minConcurrent = 15;
+
+                var up = true;
+
+                var nextTimeLog = 300;
+                var nextTimeWrites = 100;
+                var nextTimeDelayTx = 750;
+
+                while (sw.ElapsedMilliseconds < TimeSpan.FromSeconds(30).TotalMilliseconds)
                 {
-                    var head = await streamStore.ReadHeadPosition(linkedToken.Token);
-
-                    lock(s_lock)
+                    if (sw.ElapsedMilliseconds >= nextTimeLog)
                     {
-                        var subscriptionPosition = s_db.LastOrDefault();
+                        nextTimeLog += 300;
+                        var head = await streamStore.ReadHeadPosition(linkedToken.Token);
 
-                        Output.WriteLine($"Head: {head}, Subscription: {subscriptionPosition}");
-
-                        if(head > subscriptionPosition + 1000)
+                        lock (s_lock)
                         {
-                            if(l.Any())
-                            {
-                                Output.WriteLine("Cancelling");
-                                var cts = l.Last();
-                                cts.source.Cancel();
-                                cts.source.Dispose();
-                                l.Remove(cts);
-                                maxConcurrent--;
-                            }
+                            var subscriptionPosition = s_db.LastOrDefault();
+                            Output.WriteLine($"Head: {head} | Subscription: {subscriptionPosition} "
+                                             + $"| ConcurrentWrite: {concurrentWrite.Count(x => !x.task.IsCompleted)} "
+                                             + $"| concurrentDelayedTx: {concurrentDelayedTx.Count(x => !x.task.IsCompleted)}");
                         }
-                        else if(maxConcurrent < 100)
+                    }
+
+                    if (sw.ElapsedMilliseconds >= nextTimeWrites)
+                    {
+                        nextTimeWrites += 100;
+
+                        if (up)
                         {
+                            Output.WriteLine("Adding concurrent write");
+
                             var cts = new CancellationTokenSource();
                             var t = Task.Run(() =>
                                     RunWrites(cts.Token,
                                         numberOfMessagesPerAmend,
                                         numberOfStreams,
-                                        l.Count * numberOfStreams,
+                                        concurrentWrite.Count * numberOfStreams,
                                         jsonData,
                                         streamStore),
                                 cts.Token);
-                            l.Add((cts, t));
-
-                            maxConcurrent++;
+                            concurrentWrite.Add((cts, t));
+                        }
+                        else
+                        {
+                            Output.WriteLine("Cancelling concurrent write");
+                            var cts = concurrentWrite.First();
+                            cts.source.Cancel();
+                            cts.source.Dispose();
+                            concurrentWrite.Remove(cts);
                         }
                     }
 
-                    await Task.Delay(200, linkedToken.Token);
+                    if (sw.ElapsedMilliseconds >= nextTimeDelayTx)
+                    {
+                        nextTimeDelayTx += 1000;
+
+                        Output.WriteLine("Adding delay write");
+
+                        var cts = new CancellationTokenSource();
+                        var t = Task.Run(() =>
+                                AddTransaction(connectionString,
+                                    scheme,
+                                    3050,
+                                    jsonData,
+                                    numberOfMessagesPerAmend,
+                                    cts.Token),
+                            cts.Token);
+                        concurrentDelayedTx.Add((cts, t));
+                    }
+
+                    foreach (var completedWrite in concurrentWrite.Where(x => x.task.IsCompleted).ToList())
+                    {
+                        completedWrite.source.Dispose();
+                        concurrentWrite.Remove(completedWrite);
+                    }
+
+                    if (concurrentWrite.Count < minConcurrent)
+                        up = true;
+                    else if (concurrentWrite.Count > maxConcurrent)
+                        up = false;
                 }
 
-                readLikeToken.Cancel();
-                readLikeToken.Dispose();
-
-                foreach(var valueTuple in l)
+                foreach (var (cancellationTokenSource, _) in concurrentWrite)
                 {
-                    valueTuple.source.Cancel();
-                    valueTuple.source.Dispose();
+                    cancellationTokenSource.Cancel();
+                    cancellationTokenSource.Dispose();
                 }
 
-                await Task.WhenAll(l.Select(x => x.task).Where(t => !t.IsCanceled));
+                foreach (var (cancellationTokenSource, _) in concurrentDelayedTx)
+                {
+                    cancellationTokenSource.Cancel();
+                    cancellationTokenSource.Dispose();
+                }
+
+                await Task.WhenAll(concurrentWrite.Select(x => x.task).Where(t => !t.IsCompleted));
+                await Task.WhenAll(concurrentDelayedTx.Select(x => x.task).Where(t => !t.IsCompleted));
 
                 Output.WriteLine("Writes finished");
-
 
                 var db = new List<long>();
                 ReadAllPage page = await streamStore.ReadAllForwards(Position.Start, 500, false, ct);
@@ -112,17 +161,17 @@
                 {
                     db.AddRange(page.Messages.Select(x => x.Position));
                     page = await page.ReadNext(linkedToken.Token);
-                } while(!page.IsEnd);
+                } while (!page.IsEnd);
 
                 db.AddRange(page.Messages.Select(x => x.Position));
 
 
-                while(true)
+                while (true)
                 {
                     var head = await streamStore.ReadHeadPosition(linkedToken.Token);
-                    lock(s_lock)
+                    lock (s_lock)
                     {
-                        if(head == s_db.Last())
+                        if (head == s_db.Last())
                         {
                             break;
                         }
@@ -135,37 +184,119 @@
                 linkedToken.Dispose();
                 s_subscription.Dispose();
 
-                lock(s_lock)
+                lock (s_lock)
                 {
                     Output.WriteLine(!db.SequenceEqual(s_db) ? "DONE WITH SKIPPED EVENT" : "Done without skipped event");
                 }
 
             }
-            finally 
+            finally
             {
                 dispose();
             }
         }
 
-        private static async Task RunLike(IStreamStore streamStore, CancellationToken token)
+        private static async Task AddTransaction(string connectionString, string scheme, int delayCommitTime, string jsonData, int numberOfMessagesPerAmend, CancellationToken cancellationToken)
         {
-            while(true)
+            try
             {
-                try
+                var expectedVersion = ExpectedVersion.Any;
+
+                var streamId = $"transactiontest/{Guid.NewGuid()}";
+
+                var schema = new Schema(scheme);
+
+                AppendResult result;
+
+                var streamIdInfo = new StreamIdInfo(streamId);
+
+                var messages = new List<NewStreamMessage>
                 {
-                    token.ThrowIfCancellationRequested();
-                    await streamStore.ListStreams(Pattern.StartsWith("stream"), 500, null, token);
-                }
-                catch(OperationCanceledException ex)
+                    new NewStreamMessage(Guid.NewGuid(), "TestTransaction", "{}")
+                }.ToArray();
+
+                using (var connection = await OpenConnection(connectionString, scheme, cancellationToken))
+                using (var transaction = connection.BeginTransaction())
+                using (var command = BuildFunctionCommand(
+                          schema.AppendToStream,
+                          transaction,
+                          Parameters.StreamId(streamIdInfo.PostgresqlStreamId),
+                          Parameters.StreamIdOriginal(streamIdInfo.PostgresqlStreamId),
+                          Parameters.MetadataStreamId(streamIdInfo.MetadataPosgresqlStreamId),
+                          Parameters.ExpectedVersion(expectedVersion),
+                          Parameters.CreatedUtc(SystemClock.GetUtcNow.Invoke()),
+                          Parameters.NewStreamMessages(messages)))
                 {
-                    Output.WriteLine(ex.ToString());
-                    break;
-                }
-                catch(Exception ex)
-                {
-                    Output.WriteLine(ex.ToString());
+                    try
+                    {
+                        using (var reader = await command
+                                  .ExecuteReaderAsync(cancellationToken)
+                                  .ConfigureAwait(false))
+                        {
+                            await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+
+                            result = new AppendResult(reader.GetInt32(0), reader.GetInt64(1));
+                        }
+
+
+                        await Task.Delay(delayCommitTime, cancellationToken);
+
+                        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (PostgresException ex) when (ex.IsWrongExpectedVersion())
+                    {
+                        await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+
+                        throw new WrongExpectedVersionException(
+                            ErrorMessages.AppendFailedWrongExpectedVersion(streamIdInfo.PostgresqlStreamId.IdOriginal,
+                                expectedVersion),
+                            streamIdInfo.PostgresqlStreamId.IdOriginal,
+                            expectedVersion,
+                            ex);
+                    }
                 }
             }
+            catch (OperationCanceledException ex)
+            {
+                Output.WriteLine(ex.ToString());
+
+            }
+            catch (Exception ex) when (!(ex is OperationCanceledException))
+            {
+                Output.WriteLine(ex.ToString());
+            }
+        }
+
+        private static async Task<NpgsqlConnection> OpenConnection(string connectionString, string scheme, CancellationToken cancellationToken)
+        {
+            var connection = new NpgsqlConnection(connectionString);
+            var schema = new Schema(scheme);
+
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+            connection.ReloadTypes();
+
+            connection.TypeMapper.MapComposite<PostgresNewStreamMessage>(schema.NewStreamMessage);
+
+            return connection;
+        }
+
+        private static NpgsqlCommand BuildFunctionCommand(
+            string function,
+            NpgsqlTransaction transaction,
+            params NpgsqlParameter[] parameters)
+        {
+            var command = new NpgsqlCommand(function, transaction.Connection, transaction)
+            {
+                CommandType = CommandType.StoredProcedure,
+            };
+
+            foreach (var parameter in parameters)
+            {
+                command.Parameters.Add(parameter);
+            }
+
+            return command;
         }
 
         private static Task RunSubscribe(IStreamStore streamStore, int readPageSize)
@@ -203,7 +334,7 @@
                 {
                     ct.ThrowIfCancellationRequested();
 
-                    for(int j = 0; j < numberOfMessagesPerAmend; j++)
+                    for (int j = 0; j < numberOfMessagesPerAmend; j++)
                     {
                         messageNumbers[j] = count++;
                     }
@@ -216,20 +347,20 @@
                         ExpectedVersion.Any,
                         newmessages,
                         ct);
-                    //Console.Write($"> {messageNumbers[numberOfMessagesPerAmend - 1]}");
+
                 }
-                catch(SqlException ex) when(ex.Number == -2)
+                catch (SqlException ex) when (ex.Number == -2)
                 {
                     // just timeout
                 }
-                catch(OperationCanceledException ex)
+                catch (OperationCanceledException ex)
                 {
-                    Output.WriteLine(ex.ToString());
+                    //Output.WriteLine(ex.ToString());
                     break;
                 }
                 catch (Exception ex) when (!(ex is OperationCanceledException))
                 {
-                    Output.WriteLine(ex.ToString());
+                    //Output.WriteLine(ex.ToString());
                     break;
                 }
             }

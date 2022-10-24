@@ -13,6 +13,7 @@
         {
             Log.Logger = new LoggerConfiguration()
                 .WriteTo.Async(a => a.File("LoadTests.txt"))
+                .MinimumLevel.Verbose()
                 .CreateLogger();
 
             var cts = new CancellationTokenSource();
