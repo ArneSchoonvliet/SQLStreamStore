@@ -12,8 +12,8 @@
         static async Task Main(string[] args)
         {
             Log.Logger = new LoggerConfiguration()
-                .WriteTo.Async(a => a.File("LoadTests.txt"))
-                .MinimumLevel.Verbose()
+                .WriteTo
+                .File("LoadTests.txt")
                 .CreateLogger();
 
             var cts = new CancellationTokenSource();
