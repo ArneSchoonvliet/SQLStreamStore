@@ -67,12 +67,7 @@
                 filteredMessages.ToArray());
         }
 
-        private static bool IsEnd(int messageCount, int maxCount)
-        {
-            bool isEnd = messageCount != maxCount + 1;
-
-            return isEnd;
-        }
+        private static bool IsEnd(int messageCount, int maxCount) => messageCount != maxCount + 1;
 
         private async Task<(List<(StreamMessage message, int? maxAge)> ReadAllResult, bool isEnd)> HandleGaps(
             List<(StreamMessage message, int? maxAge)> readAllResult,
@@ -130,7 +125,6 @@
             Logger.TraceFormat("{correlation} Danger zone! We have messages & transactions in progress, we need to start gap checking", correlation);
 
             // Check for gap between last page and this. 
-            // TODO: Check if we are not allowing same position twice
             if(messages[0].Position != fromPositionInclusive)
             {
                 Logger.TraceFormat(
@@ -249,6 +243,8 @@
             Guid correlation,
             CancellationToken cancellationToken)
         {
+            Logger.TraceFormat("{correlation} Read trusted message initiated", correlation);
+
             var (readAllResult, _) = await ReadAllForwards(fromPositionInclusive,
                 maxCount,
                 prefetch,
@@ -257,11 +253,9 @@
 
             if(!readAllResult.Any())
             {
-                Logger.TraceFormat("{correlation} New message result is empty.", correlation);
+                Logger.TraceFormat("{correlation} Read trusted message result is empty.", correlation);
                 return (new List<(StreamMessage message, int? maxAge)>(), true);
             }
-
-            var isEnd = IsEnd(readAllResult.Count, maxCount);
 
             Logger.TraceFormat(
                 "{correlation} Filter messages from {fromPositionInclusive} to {toPositionInclusive}",
@@ -274,16 +268,9 @@
                     && x.message.Position <= toPositionInclusive)
                 .ToList();
 
-            Logger.TraceFormat(
-                "{correlation} IsEnd: {isEnd} | filteredCount: {filteredCount} | totalCount {totalCount}",
-                correlation,
-                isEnd,
-                readResultToReturn.Count,
-                readAllResult.Count);
+            var isEnd = IsEnd(readAllResult.Count, maxCount);
 
-            // TODO: Check if this count logic makes any sense
-            if(isEnd && readResultToReturn.Count
-               <= readAllResult.Count - 1) // An extra row was read, we're not at the end
+            if(isEnd && readResultToReturn.Count <= readAllResult.Count - 1) 
             {
                 isEnd = false;
             }
@@ -291,6 +278,13 @@
             {
                 readResultToReturn.RemoveAt(maxCount);
             }
+
+            Logger.TraceFormat(
+                "{correlation} IsEnd: {isEnd} | filteredCount: {filteredCount} | totalCount {totalCount}",
+                correlation,
+                isEnd,
+                readResultToReturn.Count,
+                readAllResult.Count);
 
             return (readResultToReturn, isEnd);
         }

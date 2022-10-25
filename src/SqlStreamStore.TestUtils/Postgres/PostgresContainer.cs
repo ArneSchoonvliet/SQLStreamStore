@@ -55,11 +55,9 @@ namespace SqlStreamStore.TestUtils.Postgres
             Password = "password",
             Port = Port,
             Username = "postgres",
-            Host = "127.0.0.1",
+            Host = "localhost",
             Pooling = true,
-            MaxPoolSize = 500,
-            Timeout = 100,
-            SslMode = SslMode.Disable
+            MaxPoolSize = 500
         };
     }
 }
