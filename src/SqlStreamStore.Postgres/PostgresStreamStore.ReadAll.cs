@@ -67,82 +67,6 @@
                 filteredMessages.ToArray());
         }
 
-        private async
-            Task<(List<(StreamMessage message, int? maxAge)> ReadAllResult, TxIdList TransactionIdsInProgress)>
-            ReadAllForwards(
-                long fromPositionExclusive,
-                int maxCount,
-                bool prefetch,
-                Guid correlation,
-                CancellationToken cancellationToken)
-        {
-            var sw = Stopwatch.StartNew();
-
-            var refcursorSql = new StringBuilder();
-
-            using(var connection = await OpenConnection(cancellationToken))
-            using(var transaction = connection.BeginTransaction())
-            {
-                using(var command = BuildFunctionCommand(
-                          _schema.ReadAll,
-                          transaction,
-                          Parameters.Count(maxCount + 1),
-                          Parameters.Position(fromPositionExclusive),
-                          Parameters.ReadDirection(ReadDirection.Forward),
-                          Parameters.Prefetch(prefetch)))
-                using(var reader = await command
-                          .ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken)
-                          .ConfigureAwait(false))
-                {
-                    while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        refcursorSql.AppendLine(Schema.FetchAll(reader.GetString(0)));
-                    }
-                }
-
-                using(var command = new NpgsqlCommand(refcursorSql.ToString(), transaction.Connection, transaction))
-                using(var reader = await command
-                          .ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken)
-                          .ConfigureAwait(false))
-                {
-                    if(!reader.HasRows)
-                    {
-                        return (new List<(StreamMessage message, int? maxAge)>(), new TxIdList());
-                    }
-
-                    var messages = new List<(StreamMessage message, int? maxAge)>();
-
-                    while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        if(messages.Count == maxCount)
-                        {
-                            messages.Add(default);
-                        }
-                        else
-                        {
-                            var streamIdInfo = new StreamIdInfo(reader.GetString(0));
-                            var (message, maxAge, _) =
-                                await ReadAllStreamMessage(reader, streamIdInfo.PostgresqlStreamId, prefetch);
-                            messages.Add((message, maxAge));
-                        }
-                    }
-
-                    var transactionIdsInProgress = new TxIdList();
-                    await reader.NextResultAsync(cancellationToken).ConfigureAwait(false);
-                    while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        transactionIdsInProgress.Add(await reader.GetFieldValueAsync<long>(0, cancellationToken));
-                    }
-
-                    Logger.InfoFormat("{correlation} Query 'ReadAllForwards' took: {timeTaken}ms",
-                        correlation,
-                        sw.ElapsedMilliseconds);
-
-                    return (messages, transactionIdsInProgress);
-                }
-            }
-        }
-
         private static bool IsEnd(int messageCount, int maxCount)
         {
             bool isEnd = messageCount != maxCount + 1;
@@ -389,6 +313,82 @@
             }
         }
 
+        private async
+            Task<(List<(StreamMessage message, int? maxAge)> ReadAllResult, TxIdList TransactionIdsInProgress)>
+            ReadAllForwards(
+                long fromPositionExclusive,
+                int maxCount,
+                bool prefetch,
+                Guid correlation,
+                CancellationToken cancellationToken)
+        {
+            var sw = Stopwatch.StartNew();
+
+            var refcursorSql = new StringBuilder();
+
+            using(var connection = await OpenConnection(cancellationToken))
+            using(var transaction = connection.BeginTransaction())
+            {
+                using(var command = BuildFunctionCommand(
+                          _schema.ReadAll,
+                          transaction,
+                          Parameters.Count(maxCount + 1),
+                          Parameters.Position(fromPositionExclusive),
+                          Parameters.ReadDirection(ReadDirection.Forward),
+                          Parameters.Prefetch(prefetch)))
+                using(var reader = await command
+                          .ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken)
+                          .ConfigureAwait(false))
+                {
+                    while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        refcursorSql.AppendLine(Schema.FetchAll(reader.GetString(0)));
+                    }
+                }
+
+                using(var command = new NpgsqlCommand(refcursorSql.ToString(), transaction.Connection, transaction))
+                using(var reader = await command
+                          .ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken)
+                          .ConfigureAwait(false))
+                {
+                    if(!reader.HasRows)
+                    {
+                        return (new List<(StreamMessage message, int? maxAge)>(), new TxIdList());
+                    }
+
+                    var messages = new List<(StreamMessage message, int? maxAge)>();
+
+                    while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        if(messages.Count == maxCount)
+                        {
+                            messages.Add(default);
+                        }
+                        else
+                        {
+                            var streamIdInfo = new StreamIdInfo(reader.GetString(0));
+                            var (message, maxAge, _) =
+                                await ReadAllStreamMessage(reader, streamIdInfo.PostgresqlStreamId, prefetch);
+                            messages.Add((message, maxAge));
+                        }
+                    }
+
+                    var transactionIdsInProgress = new TxIdList();
+                    await reader.NextResultAsync(cancellationToken).ConfigureAwait(false);
+                    while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        transactionIdsInProgress.Add(await reader.GetFieldValueAsync<long>(0, cancellationToken));
+                    }
+
+                    Logger.InfoFormat("{correlation} Query 'ReadAllForwards' took: {timeTaken}ms",
+                        correlation,
+                        sw.ElapsedMilliseconds);
+
+                    return (messages, transactionIdsInProgress);
+                }
+            }
+        }
+
         protected override async Task<ReadAllPage> ReadAllBackwardsInternal(
             long fromPositionExclusive,
             int maxCount,
@@ -399,65 +399,81 @@
             maxCount = maxCount == int.MaxValue ? maxCount - 1 : maxCount;
             var ordinal = fromPositionExclusive == Position.End ? long.MaxValue : fromPositionExclusive;
 
+            var refcursorSql = new StringBuilder();
+
             using(var connection = await OpenConnection(cancellationToken))
             using(var transaction = connection.BeginTransaction())
-            using(var command = BuildFunctionCommand(
-                      _schema.ReadAll,
-                      transaction,
-                      Parameters.Count(maxCount + 1),
-                      Parameters.Position(ordinal),
-                      Parameters.ReadDirection(ReadDirection.Backward),
-                      Parameters.Prefetch(prefetch)))
-            using(var reader = await command
-                      .ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken)
-                      .ConfigureAwait(false))
             {
-                if(!reader.HasRows)
+                using(var command = BuildFunctionCommand(
+                          _schema.ReadAll,
+                          transaction,
+                          Parameters.Count(maxCount + 1),
+                          Parameters.Position(ordinal),
+                          Parameters.ReadDirection(ReadDirection.Backward),
+                          Parameters.Prefetch(prefetch)))
+                using(var reader = await command
+                          .ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken)
+                          .ConfigureAwait(false))
                 {
-                    // When reading backwards and there are no more items, then next position is LongPosition.Start,
-                    // regardless of what the fromPosition is.
+                    while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        refcursorSql.AppendLine(Schema.FetchAll(reader.GetString(0)));
+                    }
+                }
+
+
+                using(var command = new NpgsqlCommand(refcursorSql.ToString(), transaction.Connection, transaction))
+                using(var reader = await command
+                          .ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken)
+                          .ConfigureAwait(false))
+                {
+                    if(!reader.HasRows)
+                    {
+                        // When reading backwards and there are no more items, then next position is LongPosition.Start,
+                        // regardless of what the fromPosition is.
+                        return new ReadAllPage(
+                            Position.Start,
+                            Position.Start,
+                            true,
+                            ReadDirection.Backward,
+                            readNext,
+                            Array.Empty<StreamMessage>());
+                    }
+
+                    var messages = new List<(StreamMessage message, int? maxAge)>();
+
+                    long lastOrdinal = 0;
+                    while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        var streamIdInfo = new StreamIdInfo(reader.GetString(0));
+                        var (message, maxAge, position) =
+                            await ReadAllStreamMessage(reader, streamIdInfo.PostgresqlStreamId, prefetch);
+                        messages.Add((message, maxAge));
+
+                        lastOrdinal = position;
+                    }
+
+                    bool isEnd = true;
+                    var nextPosition = lastOrdinal;
+
+                    if(messages.Count == maxCount + 1) // An extra row was read, we're not at the end
+                    {
+                        isEnd = false;
+                        messages.RemoveAt(maxCount);
+                    }
+
+                    var filteredMessages = FilterExpired(messages);
+
+                    fromPositionExclusive = filteredMessages.Count > 0 ? filteredMessages[0].Position : 0;
+
                     return new ReadAllPage(
-                        Position.Start,
-                        Position.Start,
-                        true,
+                        fromPositionExclusive,
+                        nextPosition,
+                        isEnd,
                         ReadDirection.Backward,
                         readNext,
-                        Array.Empty<StreamMessage>());
+                        filteredMessages.ToArray());
                 }
-
-                var messages = new List<(StreamMessage message, int? maxAge)>();
-
-                long lastOrdinal = 0;
-                while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    var streamIdInfo = new StreamIdInfo(reader.GetString(0));
-                    var (message, maxAge, position) =
-                        await ReadAllStreamMessage(reader, streamIdInfo.PostgresqlStreamId, prefetch);
-                    messages.Add((message, maxAge));
-
-                    lastOrdinal = position;
-                }
-
-                bool isEnd = true;
-                var nextPosition = lastOrdinal;
-
-                if(messages.Count == maxCount + 1) // An extra row was read, we're not at the end
-                {
-                    isEnd = false;
-                    messages.RemoveAt(maxCount);
-                }
-
-                var filteredMessages = FilterExpired(messages);
-
-                fromPositionExclusive = filteredMessages.Count > 0 ? filteredMessages[0].Position : 0;
-
-                return new ReadAllPage(
-                    fromPositionExclusive,
-                    nextPosition,
-                    isEnd,
-                    ReadDirection.Backward,
-                    readNext,
-                    filteredMessages.ToArray());
             }
         }
 

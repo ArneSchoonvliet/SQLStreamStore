@@ -15,15 +15,15 @@
     [VersionOptionFromMember("-v|--version", MemberName = nameof(Version))]
     internal class Program
     {
-        [Argument(0, "sqldialect", "The SQL dialect to generate the schema creation script for: mssqlv2|mssqlv3|mysql|postgres")]
-        [AllowedValues("mssqlv2", "mssqlv3", "mysql", "postgres", IgnoreCase = true)]
+        [Argument(0, "sqldialect", "The SQL dialect to generate the schema creation script for: postgres")]
+        [AllowedValues("postgres", IgnoreCase = true)]
         public string SQLDialect { get; set; }
         
-        [Option("-s|--schema <SCHEMA>", "The optional database schema name (only applies to mssql and postgres)", CommandOptionType.SingleValue)]
+        [Option("-s|--schema <SCHEMA>", "The optional database schema name (only applies to postgres)", CommandOptionType.SingleValue)]
         public string Schema { get; set; }
 
         [Option("-cs|--create-schema",
-            "Indicates if the schema should be created as part of generation (only applies to mssql and postgres - defaults to false)",
+            "Indicates if the schema should be created as part of generation (only applies to postgres - defaults to false)",
             CommandOptionType.NoValue)]
         public bool CreateSchema { get; set; } = false;
 
