@@ -42,7 +42,7 @@ BEGIN
 
   OPEN _txinfo FOR	
 		SELECT pg_snapshot_xip(pg_current_snapshot());
-	RETURN NEXT _txinfo;
+  RETURN NEXT _txinfo;
 
 END;
 $F$
