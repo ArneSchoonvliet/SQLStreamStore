@@ -20,7 +20,7 @@
         }
 
         protected override async Task<IStreamStoreFixture> CreateFixture()
-            => await _fixturePool.Get(TestOutputHelper, new Version(9, 6));
+            => await _fixturePool.Get(TestOutputHelper, new Version(14, 5));
 
         [Fact]
         public async Task Can_check_schema()
