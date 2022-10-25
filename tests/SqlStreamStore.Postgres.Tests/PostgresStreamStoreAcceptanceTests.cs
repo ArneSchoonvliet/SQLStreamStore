@@ -25,7 +25,7 @@
         [Fact]
         public async Task Can_check_schema()
         {
-            using(var fixture = await _fixturePool.Get(TestOutputHelper, new Version(9, 6)))
+            using(var fixture = await _fixturePool.Get(TestOutputHelper, new Version(14, 5)))
             {
                 var result = await fixture.PostgresStreamStore.CheckSchema();
 
@@ -38,7 +38,7 @@
         public async Task Can_export_database_migration_script()
         {
             var schema = "custom_schema";
-            using(var fixture = await _fixturePool.Get(TestOutputHelper, new Version(9, 6), schema))
+            using(var fixture = await _fixturePool.Get(TestOutputHelper, new Version(14, 5), schema))
             {
                 var sqlScript = fixture.PostgresStreamStore.GetMigrationScript();
                 sqlScript.ShouldBe(new Scripts(schema).Migration);
