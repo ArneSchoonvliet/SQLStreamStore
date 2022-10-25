@@ -16,7 +16,7 @@
             Output.WriteLine(ConsoleColor.Green, "Appends events to a single stream that has a maxCount.");
             Output.WriteLine("");
 
-            var (streamStore, dispose, connectionString) = await GetStore(ct);
+            var (streamStore, dispose, _) = await GetStore(ct);
 
             try
             {
