@@ -1,8 +1,8 @@
 ﻿namespace SqlStreamStore
 {
-    public class IntigritiGapHandlingSettings
+    public class GapHandlingSettings
     {
-        public IntigritiGapHandlingSettings(bool allowSkip, long possibleDeadlockTime, long possibleAllowedSkipTime)
+        public GapHandlingSettings(bool allowSkip, long possibleDeadlockTime, long possibleAllowedSkipTime)
         {
             AllowSkip = allowSkip;
             PossibleDeadlockTime = possibleDeadlockTime;

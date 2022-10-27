@@ -30,7 +30,7 @@
             _databaseManager = new PostgresContainer($"test_{Guid.NewGuid():n}", version);
         }
 
-        public async Task<PostgresStreamStore> GetPostgresStreamStore(IntigritiGapHandlingSettings gapHandlingSettings, bool scavengeAsynchronously = false)
+        public async Task<PostgresStreamStore> GetPostgresStreamStore(GapHandlingSettings gapHandlingSettings, bool scavengeAsynchronously = false)
         {
             var store = await GetUninitializedPostgresStreamStore(gapHandlingSettings, scavengeAsynchronously);
 
@@ -39,7 +39,7 @@
             return store;
         }
 
-        public async Task<PostgresStreamStore> GetUninitializedPostgresStreamStore(IntigritiGapHandlingSettings gapHandlingSettings, bool scavengeAsynchronously = false)
+        public async Task<PostgresStreamStore> GetUninitializedPostgresStreamStore(GapHandlingSettings gapHandlingSettings, bool scavengeAsynchronously = false)
         {
             await CreateDatabase();
 

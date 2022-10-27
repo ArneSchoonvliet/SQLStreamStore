@@ -20,7 +20,7 @@
         public PostgresStreamStoreSettings(
             string connectionString,
             Version version,
-            IntigritiGapHandlingSettings gapHandlingSettings = null)
+            GapHandlingSettings gapHandlingSettings = null)
         {
             Ensure.That(connectionString, nameof(connectionString)).IsNotNullOrWhiteSpace();
             Ensure.That(version, nameof(version)).IsNotNull();
@@ -38,7 +38,7 @@
         /// <summary>
         ///    Settings that are used for gap handling.
         /// </summary>
-        public IntigritiGapHandlingSettings GapHandlingSettings { get; }
+        public GapHandlingSettings GapHandlingSettings { get; }
 
         
         /// <summary>

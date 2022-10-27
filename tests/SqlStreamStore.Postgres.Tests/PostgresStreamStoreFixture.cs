@@ -18,7 +18,7 @@ namespace SqlStreamStore
             PostgresContainer dockerInstance,
             string databaseName,
             Action onDispose,
-            IntigritiGapHandlingSettings gapHandlingSettings)
+            GapHandlingSettings gapHandlingSettings)
         {
             _onDispose = onDispose;
 

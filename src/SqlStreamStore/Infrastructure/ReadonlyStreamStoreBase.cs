@@ -21,13 +21,13 @@ namespace SqlStreamStore.Infrastructure
         private bool _isDisposed;
         private readonly MetadataMaxAgeCache _metadataMaxAgeCache;
         private readonly bool _disableMetadataCache;
-        private readonly IntigritiGapHandlingSettings _gapHandlingSettings;
+        private readonly GapHandlingSettings _gapHandlingSettings;
 
         protected ReadonlyStreamStoreBase(
             TimeSpan metadataMaxAgeCacheExpiry,
             int metadataMaxAgeCacheMaxSize,
             GetUtcNow getUtcNow,
-            string logName, IntigritiGapHandlingSettings gapHandlingSettings)
+            string logName, GapHandlingSettings gapHandlingSettings)
         {
             GetUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
             Logger = LogProvider.GetLogger(logName);
@@ -38,7 +38,7 @@ namespace SqlStreamStore.Infrastructure
             _gapHandlingSettings = gapHandlingSettings;
         }
 
-        protected ReadonlyStreamStoreBase(GetUtcNow getUtcNow, string logName, IntigritiGapHandlingSettings gapHandlingSettings)
+        protected ReadonlyStreamStoreBase(GetUtcNow getUtcNow, string logName, GapHandlingSettings gapHandlingSettings = null)
         {
             GetUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
             Logger = LogProvider.GetLogger(logName);

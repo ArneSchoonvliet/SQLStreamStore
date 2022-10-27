@@ -16,7 +16,7 @@
             ITestOutputHelper outputHelper,
             Version version,
             string schema = "dbo",
-            IntigritiGapHandlingSettings gapHandlingSettings = null)
+            GapHandlingSettings gapHandlingSettings = null)
         {
             var fixturePool = _fixturePoolBySchema.GetOrAdd(
                 schema,

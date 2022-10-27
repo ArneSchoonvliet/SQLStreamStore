@@ -29,7 +29,7 @@ namespace SqlStreamStore.Infrastructure
             int metadataMaxAgeCacheMaxSize,
             GetUtcNow getUtcNow,
             string logName,
-            IntigritiGapHandlingSettings gapHandlingSettings)
+            GapHandlingSettings gapHandlingSettings = null)
             : base(metadataMaxAgeCacheExpiry, metadataMaxAgeCacheMaxSize, getUtcNow, logName, gapHandlingSettings)
         { }
 
@@ -39,7 +39,7 @@ namespace SqlStreamStore.Infrastructure
         /// <param name="getUtcNow"></param>
         /// <param name="logName"></param>
         /// <param name="gapHandlingSettings"></param>
-        protected StreamStoreBase(GetUtcNow getUtcNow, string logName, IntigritiGapHandlingSettings gapHandlingSettings)
+        protected StreamStoreBase(GetUtcNow getUtcNow, string logName, GapHandlingSettings gapHandlingSettings = null)
             : base(getUtcNow, logName, gapHandlingSettings)
         { }
 
