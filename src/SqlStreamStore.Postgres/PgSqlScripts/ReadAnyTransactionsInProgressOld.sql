@@ -10,9 +10,9 @@ BEGIN
     SELECT 1 
     FROM pg_stat_activity AS activity
     INNER JOIN (
-        SELECT pg_snapshot_xip(pg_current_snapshot()) AS txid
+        SELECT txid_snapshot_xip(txid_current_snapshot()) AS txid
     ) AS in_progress_txs 
-    ON activity.backend_xid = in_progress_txs.txid::xid
+    ON activity.backend_xid::TEXT::BIGINT = in_progress_txs.txid
     WHERE datname = _datname AND in_progress_txs.txid = ANY(_txids))
   );
 END;

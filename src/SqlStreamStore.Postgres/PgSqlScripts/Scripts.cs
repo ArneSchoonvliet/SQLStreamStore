@@ -47,6 +47,7 @@
         private string ReadStreamHeadPosition => GetScript(nameof(ReadStreamHeadPosition));
 
         private string ReadAnyTransactionsInProgress => GetScript(nameof(ReadAnyTransactionsInProgress));
+        private string ReadAnyTransactionsInProgressOld => GetScript(nameof(ReadAnyTransactionsInProgressOld));
 
         private string ReadStreamHeadVersion => GetScript(nameof(ReadStreamHeadVersion));
 
@@ -78,7 +79,7 @@
             ReadStreamHeadVersion,
             ReadSchemaVersion,
             ReadStreamVersionOfMessageId,
-            ReadAnyTransactionsInProgress,
+            version < new Version("13.0") ? ReadAnyTransactionsInProgressOld : ReadAnyTransactionsInProgress,
             Scavenge,
             SetStreamMetadata);
 
