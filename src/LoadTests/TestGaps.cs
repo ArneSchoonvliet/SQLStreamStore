@@ -6,7 +6,6 @@
     using System.Threading;
     using System.Threading.Tasks;
     using EasyConsole;
-    using Microsoft.Data.SqlClient;
     using SqlStreamStore;
     using SqlStreamStore.Streams;
 
@@ -179,10 +178,6 @@
                         newmessages,
                         ct);
                     //Console.Write($"> {messageNumbers[numberOfMessagesPerAmend - 1]}");
-                }
-                catch(SqlException ex) when(ex.Number == -2)
-                {
-                    // just timeout
                 }
                 catch(Exception ex) when(!(ex is TaskCanceledException))
                 {

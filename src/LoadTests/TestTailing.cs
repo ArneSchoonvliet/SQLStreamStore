@@ -10,8 +10,6 @@
 
     using EasyConsole;
 
-    using Microsoft.Data.SqlClient;
-
     using Npgsql;
 
     using SqlStreamStore;
@@ -348,10 +346,6 @@
                         newmessages,
                         ct);
 
-                }
-                catch (SqlException ex) when (ex.Number == -2)
-                {
-                    // just timeout
                 }
                 catch (OperationCanceledException ex)
                 {
