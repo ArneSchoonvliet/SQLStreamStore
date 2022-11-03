@@ -31,7 +31,7 @@
             // To read backwards from end, need to use int MaxValue
             var streamVersion = start == StreamVersion.End ? int.MaxValue : start;
 
-            var messages = new List<(StreamMessage message, int? maxAge)>();
+            var messages = new List<StreamMessage>();
 
             Func<List<StreamMessage>, int, int> getNextVersion;
 
@@ -114,7 +114,7 @@
 
                 while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
-                    messages.Add((await ReadStreamMessage(reader, streamId, prefetch), maxAge));
+                    messages.Add(await ReadStreamMessage(reader, streamId, prefetch));
                 }
 
                 var isEnd = true;
@@ -125,7 +125,9 @@
                     messages.RemoveAt(count);
                 }
 
-                var filteredMessages = FilterExpired(messages);
+                var filteredMessages = maxAge.HasValue
+                    ? FilterExpired(messages, new Dictionary<string, int> { { streamId.IdOriginal, maxAge.Value } })
+                    : messages;
 
                 return new ReadStreamPage(
                     streamId.IdOriginal,

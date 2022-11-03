@@ -2,6 +2,7 @@ namespace SqlStreamStore.Infrastructure
 {
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
     using SqlStreamStore.Logging;
@@ -468,29 +469,32 @@ namespace SqlStreamStore.Infrastructure
                 valid.ToArray());
         }
 
-        protected List<StreamMessage> FilterExpired(List<(StreamMessage StreamMessage, int? MaxAge)> messages)
+        protected List<StreamMessage> FilterExpired(List<StreamMessage> messages, Dictionary<string, int> maxAgeDict)
         {
+            if(maxAgeDict.Count == 0)
+                return messages;
+
             var valid = new List<StreamMessage>();
             var currentUtc = _getUtcNow();
-            foreach (var item in messages)
+            foreach (var message in messages)
             {
-                if (item.StreamMessage.StreamId.StartsWith("$"))
+                if (message.StreamId.StartsWith("$"))
                 {
-                    valid.Add(item.StreamMessage);
+                    valid.Add(message);
                     continue;
                 }
-                if (!item.MaxAge.HasValue || item.MaxAge <= 0)
+                if (!maxAgeDict.TryGetValue(message.StreamId, out int maxAge) || maxAge <= 0)
                 {
-                    valid.Add(item.StreamMessage);
+                    valid.Add(message);
                     continue;
                 }
-                if (item.StreamMessage.CreatedUtc.AddSeconds(item.MaxAge.Value) > currentUtc)
+                if (message.CreatedUtc.AddSeconds(maxAge) > currentUtc)
                 {
-                    valid.Add(item.StreamMessage);
+                    valid.Add(message);
                 }
                 else
                 {
-                    PurgeExpiredMessage(item.StreamMessage);
+                    PurgeExpiredMessage(message);
                 }
             }
             return valid;
