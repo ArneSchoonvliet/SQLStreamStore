@@ -16,7 +16,7 @@ namespace SqlStreamStore.Infrastructure
     public abstract class ReadonlyStreamStoreBase : IReadonlyStreamStore
     {
         private const int DefaultReloadInterval = 3000;
-        protected readonly GetUtcNow GetUtcNow;
+        private readonly GetUtcNow _getUtcNow;
         protected readonly ILog Logger;
         private bool _isDisposed;
         private readonly MetadataMaxAgeCache _metadataMaxAgeCache;
@@ -27,21 +27,18 @@ namespace SqlStreamStore.Infrastructure
             TimeSpan metadataMaxAgeCacheExpiry,
             int metadataMaxAgeCacheMaxSize,
             GetUtcNow getUtcNow,
-            string logName, GapHandlingSettings gapHandlingSettings)
+            string logName, GapHandlingSettings gapHandlingSettings = null) : this(getUtcNow, logName, gapHandlingSettings)
         {
-            GetUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
-            Logger = LogProvider.GetLogger(logName);
-
             _metadataMaxAgeCache = new MetadataMaxAgeCache(this, metadataMaxAgeCacheExpiry,
-                metadataMaxAgeCacheMaxSize, GetUtcNow);
+                metadataMaxAgeCacheMaxSize, _getUtcNow);
             
             _gapHandlingSettings = gapHandlingSettings;
         }
 
         protected ReadonlyStreamStoreBase(GetUtcNow getUtcNow, string logName, GapHandlingSettings gapHandlingSettings = null)
         {
-            GetUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
             Logger = LogProvider.GetLogger(logName);
+            _getUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
             _disableMetadataCache = true;
             _gapHandlingSettings = gapHandlingSettings;
         }
@@ -65,8 +62,6 @@ namespace SqlStreamStore.Infrastructure
 
             var page = await ReadAllForwardsInternal(fromPositionInclusive, maxCount, prefetchJsonData, ReadNext, cancellationToken)
                 .ConfigureAwait(false);
-
-
 
             if(_gapHandlingSettings != null)
             {
@@ -403,7 +398,7 @@ namespace SqlStreamStore.Infrastructure
             {
                 return page;
             }
-            var currentUtc = GetUtcNow();
+            var currentUtc = _getUtcNow();
             var valid = new List<StreamMessage>();
             foreach(var message in page.Messages)
             {
@@ -439,7 +434,7 @@ namespace SqlStreamStore.Infrastructure
                 return readAllPage;
             }
             var valid = new List<StreamMessage>();
-            var currentUtc = GetUtcNow();
+            var currentUtc = _getUtcNow();
             foreach (var streamMessage in readAllPage.Messages)
             {
                 if(streamMessage.StreamId.StartsWith("$"))
@@ -476,7 +471,7 @@ namespace SqlStreamStore.Infrastructure
         protected List<StreamMessage> FilterExpired(List<(StreamMessage StreamMessage, int? MaxAge)> messages)
         {
             var valid = new List<StreamMessage>();
-            var currentUtc = GetUtcNow();
+            var currentUtc = _getUtcNow();
             foreach (var item in messages)
             {
                 if (item.StreamMessage.StreamId.StartsWith("$"))
