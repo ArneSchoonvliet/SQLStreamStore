@@ -16,6 +16,7 @@
         /// Initializes a new instance of <see cref="PostgresStreamStoreSettings"/>.
         /// </summary>
         /// <param name="connectionString">The connection string.</param>
+        /// <param name="version">Postgres server version</param>
         /// <param name="gapHandlingSettings">Settings that are used for gap handling</param>
         public PostgresStreamStoreSettings(
             string connectionString,
@@ -39,10 +40,9 @@
         ///    Settings that are used for gap handling.
         /// </summary>
         public GapHandlingSettings GapHandlingSettings { get; }
-
         
         /// <summary>
-        ///    Postgresql version
+        ///    Postgres server version
         /// </summary>
         public Version Version { get; }
 

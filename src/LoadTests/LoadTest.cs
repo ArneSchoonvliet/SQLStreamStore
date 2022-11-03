@@ -26,7 +26,6 @@
                         Console.WriteLine(fixture.ConnectionString);
                         
                         var gapHandlingInput = Input.ReadString("Use new gap handling (y/n): ");
-
                         var newGapHandlingEnabled = gapHandlingInput.ToLower() == "y";
 
                         await fixture.Start();
@@ -41,7 +40,6 @@
                         Console.WriteLine(fixture.ConnectionString);
                         
                         var gapHandlingInput = Input.ReadString("Use new gap handling (y/n): ");
-
                         var newGapHandlingEnabled = gapHandlingInput.ToLower() == "y";
                         
                         await fixture.Start();
@@ -58,7 +56,6 @@
                         Console.WriteLine(postgresStreamStoreDb.ConnectionString);
                         
                         var gapHandlingInput = Input.ReadString("Use new gap handling (y/n): ");
-
                         var newGapHandlingEnabled = gapHandlingInput.ToLower() == "y";
                         
                         streamStore = await postgresStreamStoreDb.GetPostgresStreamStore(newGapHandlingEnabled ? new GapHandlingSettings(true, 6000, 12000) : null);

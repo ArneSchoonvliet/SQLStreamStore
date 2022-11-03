@@ -20,7 +20,6 @@ internal class BasicRead : LoadTest
 
             try
             {
-
                 var numberOfStreams = Input.ReadInt("Number of streams: ", 1, 100000000);
                 int messageJsonDataSize = Input.ReadInt("Size of Json (kb): ", 1, 1024);
                 int numberOfMessagesPerAmend = Input.ReadInt("Number of messages per stream append: ", 1, 1000);
@@ -36,7 +35,6 @@ internal class BasicRead : LoadTest
                 var l = new List<Task>();
                 for (int i = 0; i < 10; i++)
                 {
-
                     var task = Task.Run(async () =>
                     {
                         for (int j = 0; j < numberOfStreams; j++)
@@ -57,7 +55,8 @@ internal class BasicRead : LoadTest
                                     ExpectedVersion.Any,
                                     newmessages,
                                     ct);
-                                //Console.Write($"> {messageNumbers[numberOfMessagesPerAmend - 1]}");
+                                // Uncomment if you want more logging in console
+                                // Console.Write($"> {messageNumbers[numberOfMessagesPerAmend - 1]}");
                             }
                             catch (Exception ex) when (!(ex is TaskCanceledException))
                             {
