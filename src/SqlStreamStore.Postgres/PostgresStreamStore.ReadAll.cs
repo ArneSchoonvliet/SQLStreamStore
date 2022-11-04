@@ -2,11 +2,10 @@
 {
     using System;
     using System.Collections.Generic;
-    using System.Collections.Immutable;
+    using System.Collections.ObjectModel;
     using System.Data;
     using System.Data.Common;
     using System.Diagnostics;
-    using System.IO;
     using System.Linq;
     using System.Text;
     using System.Threading;
@@ -24,15 +23,11 @@
 
             maxCount = maxCount == int.MaxValue ? maxCount - 1 : maxCount;
 
-            var (messages, maxAgeDict, transactionIdsInProgress) = await ReadAllForwards(fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken);
-
-            var isEnd = IsEnd(messages.Count, maxCount);
-            if(!isEnd)
-                messages.RemoveAt(maxCount);
+            var (messages, maxAgeDict, transactionIdsInProgress, isEnd) = await ReadAllForwards(fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken);
 
             if(_settings.GapHandlingSettings != null)
             {
-                var r = await HandleGaps(messages.ToImmutableArray(), maxAgeDict.ToImmutableDictionary(), transactionIdsInProgress, isEnd, fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken);
+                var r = await HandleGaps(messages, maxAgeDict, transactionIdsInProgress, isEnd, fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken);
 
                 isEnd = r.isEnd;
                 messages = r.messages;
@@ -50,11 +45,9 @@
             return new ReadAllPage(fromPositionExclusive, nextPosition, isEnd, ReadDirection.Forward, readNext, filteredMessages.ToArray());
         }
 
-        private static bool IsEnd(int messageCount, int maxCount) => messageCount != maxCount + 1;
-
-        private async Task<(ImmutableArray<StreamMessage> messages, ImmutableDictionary<string, int> maxAgeDict, bool isEnd)> HandleGaps(
-            ImmutableArray<StreamMessage> messages,
-            ImmutableDictionary<string, int> maxAgeDict,
+        private async Task<(ReadOnlyCollection<StreamMessage> messages, ReadOnlyDictionary<string, int> maxAgeDict, bool isEnd)> HandleGaps(
+            ReadOnlyCollection<StreamMessage> messages,
+            ReadOnlyDictionary<string, int> maxAgeDict,
             TxIdList transactionsInProgress,
             bool isEnd,
             long fromPositionInclusive,
@@ -63,56 +56,56 @@
             Guid correlation,
             CancellationToken cancellationToken)
         {
-            var hasMessages = messages.Length > 0;
+            var hasMessages = messages.Count > 0;
 
-            Logger.TraceFormat("{correlation} {messages} | Transactions in progress: {transactionsInProgress}",
+            Logger.TraceFormat("Correlation: {correlation} {messages} | Transactions in progress: {transactionsInProgress}",
                 correlation,
-                hasMessages ? $"Count: {messages.Length} | {string.Join("|", messages.Select((x, i) => $"Position: {x.Position} Array index: {i}"))}" : "No messages",
+                hasMessages ? $"Count: {messages.Count} | {string.Join("|", messages.Select((x, i) => $"Position: {x.Position} Array index: {i}"))}" : "No messages",
                 transactionsInProgress);
 
             if(!hasMessages && !transactionsInProgress.Any())
             {
-                Logger.TraceFormat("{correlation} No messages found, no transactions in progress. We will return empty list of messages with isEnd to true", correlation, messages);
-                return (ImmutableArray<StreamMessage>.Empty, ImmutableDictionary<string, int>.Empty, true);
+                Logger.TraceFormat("Correlation: {correlation} No messages found, no transactions in progress. We will return empty list of messages with isEnd to true", correlation, messages);
+                return (new ReadOnlyCollection<StreamMessage>(new List<StreamMessage>()), new ReadOnlyDictionary<string, int>(new Dictionary<string, int>()), true);
             }
 
             if(!(transactionsInProgress.Count > 0))
             {
-                Logger.TraceFormat("{correlation} No transactions in progress, no need for gap checking", correlation);
+                Logger.TraceFormat("Correlation: {correlation} No transactions in progress, no need for gap checking", correlation);
 
                 return (messages, maxAgeDict, isEnd);
             }
 
-            Logger.TraceFormat("{correlation} Danger zone! We have messages & transactions in progress, we need to start gap checking", correlation);
+            Logger.TraceFormat("Correlation: {correlation} Danger zone! We have messages & transactions in progress, we need to start gap checking", correlation);
 
             // Check for gap between last page and this. 
             if(messages[0].Position != fromPositionInclusive)
             {
                 Logger.TraceFormat(
-                    "{correlation} fromPositionInclusive {fromPositionInclusive} does not match first position of received messages {position} and transactions: {transactions} in progress",
+                    "Correlation: {correlation} fromPositionInclusive {fromPositionInclusive} does not match first position of received messages {position} and transactions: {transactions} in progress",
                     correlation,
                     fromPositionInclusive,
                     transactionsInProgress);
 
                 await PollTransactions(correlation, transactionsInProgress, cancellationToken);
 
-                return await ReadTrustedMessages(fromPositionInclusive, messages[messages.Length - 1].Position, maxCount, prefetch, correlation, cancellationToken);
+                return await ReadTrustedMessages(fromPositionInclusive, messages[messages.Count - 1].Position, maxCount, prefetch, correlation, cancellationToken);
             }
 
 
-            for(int i = 0; i < messages.Length - 1; i++)
+            for(int i = 0; i < messages.Count - 1; i++)
             {
                 var expectedNextPosition = messages[i].Position + 1;
                 var actualPosition = messages[i + 1].Position;
-                Logger.TraceFormat("{correlation} Gap checking. Expected position: {expectedNextPosition} | Actual position: {actualPosition}", correlation, expectedNextPosition, actualPosition);
+                Logger.TraceFormat("Correlation: {correlation} Gap checking. Expected position: {expectedNextPosition} | Actual position: {actualPosition}", correlation, expectedNextPosition, actualPosition);
 
                 if(expectedNextPosition != actualPosition)
                 {
-                    Logger.TraceFormat("{correlation} Gap detected", correlation);
+                    Logger.TraceFormat("Correlation: {correlation} Gap detected", correlation);
 
                     await PollTransactions(correlation, transactionsInProgress, cancellationToken);
 
-                    return await ReadTrustedMessages(fromPositionInclusive, messages[messages.Length - 1].Position, maxCount, prefetch, correlation, cancellationToken);
+                    return await ReadTrustedMessages(fromPositionInclusive, messages[messages.Count - 1].Position, maxCount, prefetch, correlation, cancellationToken);
                 }
             }
 
@@ -121,56 +114,55 @@
 
         private async Task PollTransactions(Guid correlation, TxIdList transactionsInProgress, CancellationToken cancellationToken)
         {
-            Logger.TraceFormat("{correlation} Transactions {transactions} are in progress, so gaps might be filled, start comparing", correlation, transactionsInProgress);
+            Logger.TraceFormat("Correlation: {correlation} Transactions {transactions} are in progress, so gaps might be filled, start comparing", correlation, transactionsInProgress);
 
             bool stillInProgress;
-            int count = 1;
-            int delayTime = 10;
-            long totalTime = 0;
+            var count = 1;
+            var delayTime = 0;
+            var totalTime = 0L;
 
             var sw = Stopwatch.StartNew();
             do
             {
-                stillInProgress = await ReadAnyTransactionsInProgress(transactionsInProgress, cancellationToken);
-                Logger.TraceFormat("{correlation} Transactions still pending. Query 'ReadAnyTransactionsInProgress' took: {timeTaken}ms", correlation, sw.ElapsedMilliseconds);
-
-                if(_settings.GapHandlingSettings.AllowSkip && totalTime > _settings.GapHandlingSettings.PossibleAllowedSkipTime)
+                if(totalTime > _settings.GapHandlingSettings.MinimumWarnTime)
                 {
-                    Logger.ErrorFormat(
-                        "{correlation} Possible SKIPPED EVENT as we will stop waiting for in progress transactions! One of these transactions: {transactions} is in progress for longer then {totalTime}ms",
+                    Logger.ErrorFormat("Correlation: {correlation} Possible DEADLOCK! One of these transactions: {transactions} is in progress for longer then {totalTime}ms",
                         correlation,
                         transactionsInProgress,
-                        _settings.GapHandlingSettings.PossibleAllowedSkipTime);
+                        _settings.GapHandlingSettings.MinimumWarnTime);
+                }
+
+                if(totalTime > _settings.GapHandlingSettings.SkipTime)
+                {
+                    Logger.ErrorFormat(
+                        "Correlation: {correlation} Possible SKIPPED EVENT as we will stop waiting for in progress transactions! One of these transactions: {transactions} is in progress for longer then {totalTime}ms",
+                        correlation,
+                        transactionsInProgress,
+                        _settings.GapHandlingSettings.SkipTime);
                     return;
                 }
 
-                if(totalTime > _settings.GapHandlingSettings.PossibleDeadlockTime)
-                {
-                    Logger.ErrorFormat("{correlation} Possible DEADLOCK! One of these transactions: {transactions} is in progress for longer then {totalTime}ms",
-                        correlation,
-                        transactionsInProgress,
-                        _settings.GapHandlingSettings.PossibleDeadlockTime);
-                }
-
-
                 if(delayTime > 0)
                 {
-                    Logger.TraceFormat("{correlation} Delay 'PollTransactions' for {delayTime}ms", correlation, delayTime);
+                    Logger.TraceFormat("Correlation: {correlation} Delay 'PollTransactions' for {delayTime}ms", correlation, delayTime);
                     await Task.Delay(delayTime, cancellationToken);
                 }
 
                 if(count % 5 == 0)
                     delayTime += 10;
 
+                stillInProgress = await ReadAnyTransactionsInProgress(transactionsInProgress, cancellationToken);
+                Logger.TraceFormat("Correlation: {correlation} Transactions still pending. Query 'ReadAnyTransactionsInProgress' took: {timeTaken}ms", correlation, sw.ElapsedMilliseconds);
+
                 totalTime += sw.ElapsedMilliseconds;
                 count++;
                 sw.Restart();
 
-                Logger.TraceFormat("{correlation} State 'PollTransactions' | count: {count} | delayTime: {delayTime} | totalTime: {totalTime}", correlation, count, delayTime, totalTime);
+                Logger.TraceFormat("Correlation: {correlation} State 'PollTransactions' | count: {count} | delayTime: {delayTime} | totalTime: {totalTime}", correlation, count, delayTime, totalTime);
             } while(stillInProgress);
         }
 
-        private async Task<(ImmutableArray<StreamMessage>, ImmutableDictionary<string, int>, bool)> ReadTrustedMessages(
+        private async Task<(ReadOnlyCollection<StreamMessage>, ReadOnlyDictionary<string, int>, bool)> ReadTrustedMessages(
             long fromPositionInclusive,
             long toPositionInclusive,
             int maxCount,
@@ -178,29 +170,26 @@
             Guid correlation,
             CancellationToken cancellationToken)
         {
-            Logger.TraceFormat("{correlation} Read trusted message initiated", correlation);
+            Logger.TraceFormat("Correlation: {correlation} Read trusted message initiated", correlation);
 
-            var (messages, maxAgeDict, _) = await ReadAllForwards(fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken);
+            var (messages, maxAgeDict, _, isEnd) = await ReadAllForwards(fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken);
 
             if(!messages.Any())
             {
-                Logger.TraceFormat("{correlation} Read trusted message result is empty.", correlation);
-                return (ImmutableArray<StreamMessage>.Empty, ImmutableDictionary<string, int>.Empty, true);
+                Logger.TraceFormat("Correlation: {correlation} Read trusted message result is empty.", correlation);
+                return (new ReadOnlyCollection<StreamMessage>(new List<StreamMessage>()), new ReadOnlyDictionary<string, int>(new Dictionary<string, int>()), true);
             }
 
-            Logger.TraceFormat("{correlation} Filter messages from {fromPositionInclusive} to {toPositionInclusive}", correlation, fromPositionInclusive, toPositionInclusive);
+            Logger.TraceFormat("Correlation: {correlation} Filter messages from {fromPositionInclusive} to {toPositionInclusive}", correlation, fromPositionInclusive, toPositionInclusive);
 
-            var readResultToReturn = messages.Where(x => x.Position >= fromPositionInclusive && x.Position <= toPositionInclusive).ToList();
+            var messageToReturn = messages.Where(x => x.Position >= fromPositionInclusive && x.Position <= toPositionInclusive).ToList();
 
-            var isEnd = IsEnd(messages.Count, maxCount);
-            if(isEnd && readResultToReturn.Count <= messages.Count - 1)
+            if(isEnd && messageToReturn.Count <= messages.Count)
                 isEnd = false;
-            else if(readResultToReturn.Count == maxCount + 1)
-                readResultToReturn.RemoveAt(maxCount);
 
-            Logger.TraceFormat("{correlation} IsEnd: {isEnd} | filteredCount: {filteredCount} | totalCount {totalCount}", correlation, isEnd, readResultToReturn.Count, messages.Count);
+            Logger.TraceFormat("Correlation: {correlation} IsEnd: {isEnd} | filteredCount: {filteredCount} | totalCount {totalCount}", correlation, isEnd, messageToReturn.Count, messages.Count);
 
-            return (readResultToReturn.ToImmutableArray(), maxAgeDict.ToImmutableDictionary(), isEnd);
+            return (messageToReturn.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), isEnd);
         }
 
         private async Task<bool> ReadAnyTransactionsInProgress(TxIdList transactionIds, CancellationToken cancellationToken)
@@ -215,7 +204,7 @@
             }
         }
 
-        private async Task<(List<StreamMessage> messages, Dictionary<string, int> maxAgeDict, TxIdList transactionIdsInProgress)> ReadAllForwards(
+        private async Task<(ReadOnlyCollection<StreamMessage> messages, ReadOnlyDictionary<string, int> maxAgeDict, TxIdList transactionIdsInProgress, bool isEnd)> ReadAllForwards(
             long fromPositionExclusive,
             int maxCount,
             bool prefetch,
@@ -248,18 +237,17 @@
                 {
                     if(!reader.HasRows)
                     {
-                        return (new List<StreamMessage>(), new Dictionary<string, int>(), null);
+                        return (new List<StreamMessage>().AsReadOnly(), new ReadOnlyDictionary<string, int>(new Dictionary<string, int>()), new TxIdList(), true);
                     }
 
                     var messages = new List<StreamMessage>();
                     var maxAgeDict = new Dictionary<string, int>();
+                    var isEnd = true;
 
                     while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                     {
                         if(messages.Count == maxCount)
-                        {
-                            messages.Add(default);
-                        }
+                            isEnd = false;
                         else
                         {
                             var streamIdInfo = new StreamIdInfo(reader.GetString(0));
@@ -284,9 +272,9 @@
                         transactionIdsInProgress.Add(await reader.GetFieldValueAsync<long>(0, cancellationToken));
                     }
 
-                    Logger.InfoFormat("{correlation} Query 'ReadAllForwards' took: {timeTaken}ms", correlation, sw.ElapsedMilliseconds);
+                    Logger.TraceFormat("Correlation: {correlation} Query 'ReadAllForwards' took: {timeTaken}ms", correlation, sw.ElapsedMilliseconds);
 
-                    return (messages, maxAgeDict, transactionIdsInProgress);
+                    return (messages.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), transactionIdsInProgress, isEnd);
                 }
             }
         }
@@ -357,7 +345,7 @@
                         messages.RemoveAt(maxCount);
                     }
 
-                    var filteredMessages = FilterExpired(messages, maxAgeDict);
+                    var filteredMessages = FilterExpired(messages.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict));
 
                     fromPositionExclusive = filteredMessages.Count > 0 ? filteredMessages[0].Position : 0;
 

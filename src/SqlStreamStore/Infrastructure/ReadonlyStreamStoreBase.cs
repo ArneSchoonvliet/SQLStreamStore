@@ -2,6 +2,7 @@ namespace SqlStreamStore.Infrastructure
 {
     using System;
     using System.Collections.Generic;
+    using System.Collections.ObjectModel;
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
@@ -469,7 +470,7 @@ namespace SqlStreamStore.Infrastructure
                 valid.ToArray());
         }
 
-        protected List<StreamMessage> FilterExpired(List<StreamMessage> messages, Dictionary<string, int> maxAgeDict)
+        protected ReadOnlyCollection<StreamMessage> FilterExpired(ReadOnlyCollection<StreamMessage> messages, ReadOnlyDictionary<string, int> maxAgeDict)
         {
             if(maxAgeDict.Count == 0)
                 return messages;
@@ -497,7 +498,7 @@ namespace SqlStreamStore.Infrastructure
                     PurgeExpiredMessage(message);
                 }
             }
-            return valid;
+            return valid.AsReadOnly();
         }
 
         ~ReadonlyStreamStoreBase()

@@ -2,6 +2,7 @@
 {
     using System;
     using System.Collections.Generic;
+    using System.Collections.ObjectModel;
     using System.Data;
     using System.Data.Common;
     using System.Linq;
@@ -33,7 +34,7 @@
 
             var messages = new List<StreamMessage>();
 
-            Func<List<StreamMessage>, int, int> getNextVersion;
+            Func<ReadOnlyCollection<StreamMessage>, int, int> getNextVersion;
 
             if(direction == ReadDirection.Forward)
             {
@@ -125,9 +126,11 @@
                     messages.RemoveAt(count);
                 }
 
+                var readOnlyMessages = messages.AsReadOnly();
+
                 var filteredMessages = maxAge.HasValue
-                    ? FilterExpired(messages, new Dictionary<string, int> { { streamId.IdOriginal, maxAge.Value } })
-                    : messages;
+                    ? FilterExpired(readOnlyMessages, new ReadOnlyDictionary<string, int>(new Dictionary<string, int> { { streamId.IdOriginal, maxAge.Value } }))
+                    : readOnlyMessages;
 
                 return new ReadStreamPage(
                     streamId.IdOriginal,
