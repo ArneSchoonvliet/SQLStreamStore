@@ -2,6 +2,7 @@ namespace SqlStreamStore.Infrastructure
 {
     using System;
     using System.Collections.Generic;
+    using System.Collections.ObjectModel;
     using System.Threading;
     using System.Threading.Tasks;
     using SqlStreamStore.Logging;
@@ -27,8 +28,11 @@ namespace SqlStreamStore.Infrastructure
             TimeSpan metadataMaxAgeCacheExpiry,
             int metadataMaxAgeCacheMaxSize,
             GetUtcNow getUtcNow,
-            string logName, GapHandlingSettings gapHandlingSettings = null) : this(getUtcNow, logName, gapHandlingSettings)
+            string logName, GapHandlingSettings gapHandlingSettings = null)
         {
+            _getUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
+            Logger = LogProvider.GetLogger(logName);
+
             _metadataMaxAgeCache = new MetadataMaxAgeCache(this, metadataMaxAgeCacheExpiry,
                 metadataMaxAgeCacheMaxSize, _getUtcNow);
             
@@ -37,8 +41,8 @@ namespace SqlStreamStore.Infrastructure
 
         protected ReadonlyStreamStoreBase(GetUtcNow getUtcNow, string logName, GapHandlingSettings gapHandlingSettings = null)
         {
-            Logger = LogProvider.GetLogger(logName);
             _getUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
+            Logger = LogProvider.GetLogger(logName);
             _disableMetadataCache = true;
             _gapHandlingSettings = gapHandlingSettings;
         }
@@ -468,32 +472,35 @@ namespace SqlStreamStore.Infrastructure
                 valid.ToArray());
         }
 
-        protected List<StreamMessage> FilterExpired(List<(StreamMessage StreamMessage, int? MaxAge)> messages)
+        protected ReadOnlyCollection<StreamMessage> FilterExpired(ReadOnlyCollection<StreamMessage> messages, ReadOnlyDictionary<string, int> maxAgeDict)
         {
+            if(maxAgeDict.Count == 0)
+                return messages;
+
             var valid = new List<StreamMessage>();
             var currentUtc = _getUtcNow();
-            foreach (var item in messages)
+            foreach (var message in messages)
             {
-                if (item.StreamMessage.StreamId.StartsWith("$"))
+                if (message.StreamId.StartsWith("$"))
                 {
-                    valid.Add(item.StreamMessage);
+                    valid.Add(message);
                     continue;
                 }
-                if (!item.MaxAge.HasValue || item.MaxAge <= 0)
+                if (!maxAgeDict.TryGetValue(message.StreamId, out int maxAge) || maxAge <= 0)
                 {
-                    valid.Add(item.StreamMessage);
+                    valid.Add(message);
                     continue;
                 }
-                if (item.StreamMessage.CreatedUtc.AddSeconds(item.MaxAge.Value) > currentUtc)
+                if (message.CreatedUtc.AddSeconds(maxAge) > currentUtc)
                 {
-                    valid.Add(item.StreamMessage);
+                    valid.Add(message);
                 }
                 else
                 {
-                    PurgeExpiredMessage(item.StreamMessage);
+                    PurgeExpiredMessage(message);
                 }
             }
-            return valid;
+            return valid.AsReadOnly();
         }
 
         ~ReadonlyStreamStoreBase()
