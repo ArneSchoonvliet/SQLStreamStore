@@ -3,7 +3,6 @@ namespace SqlStreamStore.Infrastructure
     using System;
     using System.Collections.Generic;
     using System.Collections.ObjectModel;
-    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
     using SqlStreamStore.Logging;
@@ -29,8 +28,11 @@ namespace SqlStreamStore.Infrastructure
             TimeSpan metadataMaxAgeCacheExpiry,
             int metadataMaxAgeCacheMaxSize,
             GetUtcNow getUtcNow,
-            string logName, GapHandlingSettings gapHandlingSettings = null) : this(getUtcNow, logName, gapHandlingSettings)
+            string logName, GapHandlingSettings gapHandlingSettings = null)
         {
+            _getUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
+            Logger = LogProvider.GetLogger(logName);
+
             _metadataMaxAgeCache = new MetadataMaxAgeCache(this, metadataMaxAgeCacheExpiry,
                 metadataMaxAgeCacheMaxSize, _getUtcNow);
             
@@ -39,8 +41,8 @@ namespace SqlStreamStore.Infrastructure
 
         protected ReadonlyStreamStoreBase(GetUtcNow getUtcNow, string logName, GapHandlingSettings gapHandlingSettings = null)
         {
-            Logger = LogProvider.GetLogger(logName);
             _getUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
+            Logger = LogProvider.GetLogger(logName);
             _disableMetadataCache = true;
             _gapHandlingSettings = gapHandlingSettings;
         }
