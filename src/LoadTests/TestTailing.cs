@@ -36,11 +36,9 @@
                 var numberOfStreams = Input.ReadInt("Number of streams: ", 1, 100000000);
                 int messageJsonDataSize = Input.ReadInt("Size of Json (kb): ", 1, 1024);
                 int numberOfMessagesPerAmend = Input.ReadInt("Number of messages per stream append: ", 1, 1000);
-
                 int readPageSize = Input.ReadInt("Read page size: ", 1, 10000);
 
                 string jsonData = $@"{{""b"": ""{new string('a', messageJsonDataSize * 1024)}""}}";
-
 
                 var linkedToken = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
@@ -80,7 +78,6 @@
                     if (sw.ElapsedMilliseconds >= nextTimeWrites)
                     {
                         nextTimeWrites += 100;
-
                         if (up)
                         {
                             Output.WriteLine("Adding concurrent write");
@@ -108,10 +105,9 @@
 
                     if (sw.ElapsedMilliseconds >= nextTimeDelayTx)
                     {
-                        nextTimeDelayTx += 1000;
-
                         Output.WriteLine("Adding delay write");
 
+                        nextTimeDelayTx += 1000;
                         var cts = new CancellationTokenSource();
                         var t = Task.Run(() =>
                                 AddTransaction(connectionString,
@@ -163,7 +159,6 @@
 
                 db.AddRange(page.Messages.Select(x => x.Position));
 
-
                 while (true)
                 {
                     var head = await streamStore.ReadHeadPosition(linkedToken.Token);
@@ -186,7 +181,6 @@
                 {
                     Output.WriteLine(!db.SequenceEqual(s_db) ? "DONE WITH SKIPPED EVENT" : "Done without skipped event");
                 }
-
             }
             finally
             {
