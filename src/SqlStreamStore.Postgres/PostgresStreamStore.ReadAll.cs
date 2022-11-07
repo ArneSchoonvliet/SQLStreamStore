@@ -23,11 +23,11 @@
 
             maxCount = maxCount == int.MaxValue ? maxCount - 1 : maxCount;
 
-            var (messages, maxAgeDict, transactionIdsInProgress, isEnd) = await ReadAllForwards(fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken);
+            var (messages, maxAgeDict, transactionIdsInProgress, isEnd) = await ReadAllForwards(fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
 
             if(_settings.GapHandlingSettings != null)
             {
-                var r = await HandleGaps(messages, maxAgeDict, transactionIdsInProgress, isEnd, fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken);
+                var r = await HandleGaps(messages, maxAgeDict, transactionIdsInProgress, isEnd, fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
 
                 isEnd = r.isEnd;
                 messages = r.messages;
@@ -87,9 +87,9 @@
                     fromPositionInclusive,
                     transactionsInProgress);
 
-                await PollTransactions(correlation, transactionsInProgress, cancellationToken);
+                await PollTransactions(correlation, transactionsInProgress, cancellationToken).ConfigureAwait(false);
 
-                return await ReadTrustedMessages(fromPositionInclusive, messages[messages.Count - 1].Position, maxCount, prefetch, correlation, cancellationToken);
+                return await ReadTrustedMessages(fromPositionInclusive, messages[messages.Count - 1].Position, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
             }
 
 
@@ -103,9 +103,9 @@
                 {
                     Logger.TraceFormat("Correlation: {correlation} Gap detected", correlation);
 
-                    await PollTransactions(correlation, transactionsInProgress, cancellationToken);
+                    await PollTransactions(correlation, transactionsInProgress, cancellationToken).ConfigureAwait(false);
 
-                    return await ReadTrustedMessages(fromPositionInclusive, messages[messages.Count - 1].Position, maxCount, prefetch, correlation, cancellationToken);
+                    return await ReadTrustedMessages(fromPositionInclusive, messages[messages.Count - 1].Position, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
                 }
             }
 
@@ -145,13 +145,13 @@
                 if(delayTime > 0)
                 {
                     Logger.TraceFormat("Correlation: {correlation} Delay 'PollTransactions' for {delayTime}ms", correlation, delayTime);
-                    await Task.Delay(delayTime, cancellationToken);
+                    await Task.Delay(delayTime, cancellationToken).ConfigureAwait(false);
                 }
 
                 if(count % 5 == 0)
                     delayTime += 10;
 
-                stillInProgress = await ReadAnyTransactionsInProgress(transactionsInProgress, cancellationToken);
+                stillInProgress = await ReadAnyTransactionsInProgress(transactionsInProgress, cancellationToken).ConfigureAwait(false);
                 Logger.TraceFormat("Correlation: {correlation} Transactions still pending. Query 'ReadAnyTransactionsInProgress' took: {timeTaken}ms", correlation, sw.ElapsedMilliseconds);
 
                 totalTime += sw.ElapsedMilliseconds;
@@ -172,7 +172,7 @@
         {
             Logger.TraceFormat("Correlation: {correlation} Read trusted message initiated", correlation);
 
-            var (messages, maxAgeDict, _, isEnd) = await ReadAllForwards(fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken);
+            var (messages, maxAgeDict, _, isEnd) = await ReadAllForwards(fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
 
             if(!messages.Any())
             {
@@ -194,8 +194,8 @@
 
         private async Task<bool> ReadAnyTransactionsInProgress(TxIdList transactionIds, CancellationToken cancellationToken)
         {
-            using(var connection = await OpenConnection(cancellationToken))
-            using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
+            using(var connection = await OpenConnection(cancellationToken).ConfigureAwait(false))
+            using(var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
             using(var command = BuildFunctionCommand(_schema.ReadAnyTransactionsInProgress, transaction, Parameters.Name(connection.Database), Parameters.TransactionIds(transactionIds)))
             {
                 var result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as bool?;
@@ -215,8 +215,8 @@
 
             var refcursorSql = new StringBuilder();
 
-            using(var connection = await OpenConnection(cancellationToken))
-            using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
+            using(var connection = await OpenConnection(cancellationToken).ConfigureAwait(false))
+            using(var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
             {
                 using(var command = BuildFunctionCommand(_schema.ReadAll,
                           transaction,
@@ -251,7 +251,7 @@
                         else
                         {
                             var streamIdInfo = new StreamIdInfo(reader.GetString(0));
-                            var (message, maxAge, _) = await ReadAllStreamMessage(reader, streamIdInfo.PostgresqlStreamId, prefetch);
+                            var (message, maxAge, _) = await ReadAllStreamMessage(reader, streamIdInfo.PostgresqlStreamId, prefetch).ConfigureAwait(false);
 
                             if(maxAge.HasValue)
                             {
@@ -269,7 +269,7 @@
                     await reader.NextResultAsync(cancellationToken).ConfigureAwait(false);
                     while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                     {
-                        transactionIdsInProgress.Add(await reader.GetFieldValueAsync<long>(0, cancellationToken));
+                        transactionIdsInProgress.Add(await reader.GetFieldValueAsync<long>(0, cancellationToken).ConfigureAwait(false));
                     }
 
                     Logger.TraceFormat("Correlation: {correlation} Query 'ReadAllForwards' took: {timeTaken}ms", correlation, sw.ElapsedMilliseconds);
@@ -286,8 +286,8 @@
 
             var refcursorSql = new StringBuilder();
 
-            using(var connection = await OpenConnection(cancellationToken))
-            using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
+            using(var connection = await OpenConnection(cancellationToken).ConfigureAwait(false))
+            using(var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
             {
                 using(var command = BuildFunctionCommand(_schema.ReadAll,
                           transaction,
@@ -321,7 +321,7 @@
                     while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                     {
                         var streamIdInfo = new StreamIdInfo(reader.GetString(0));
-                        var (message, maxAge, position) = await ReadAllStreamMessage(reader, streamIdInfo.PostgresqlStreamId, prefetch);
+                        var (message, maxAge, position) = await ReadAllStreamMessage(reader, streamIdInfo.PostgresqlStreamId, prefetch).ConfigureAwait(false);
 
                         if(maxAge.HasValue)
                         {
@@ -374,11 +374,11 @@
             var position = reader.GetInt64(3);
             var createdUtc = reader.GetDateTime(4);
             var type = reader.GetString(5);
-            var jsonMetadata = await ReadString(6);
+            var jsonMetadata = await ReadString(6).ConfigureAwait(false);
 
             if(prefetch)
             {
-                return (new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, await ReadString(7)), reader.GetFieldValue<int?>(8), position);
+                return (new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, await ReadString(7).ConfigureAwait(false)), reader.GetFieldValue<int?>(8), position);
             }
 
             return (new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, ct => GetJsonData(streamId, streamVersion)(ct)),

@@ -87,7 +87,7 @@ namespace SqlStreamStore.Infrastructure
             // Check for gap between last page and this.
             if (page.Messages[0].Position != fromPositionInclusive)
             {
-                page = await ReloadAfterDelay(fromPositionInclusive, maxCount, prefetchJsonData, ReadNext, cancellationToken);
+                page = await ReloadAfterDelay(fromPositionInclusive, maxCount, prefetchJsonData, ReadNext, cancellationToken).ConfigureAwait(false);
             }
             
             // check for gap in messages collection
@@ -95,7 +95,7 @@ namespace SqlStreamStore.Infrastructure
             {
                 if(page.Messages[i].Position + 1 == page.Messages[i + 1].Position)
                     continue;
-                page = await ReloadAfterDelay(fromPositionInclusive, maxCount, prefetchJsonData, ReadNext, cancellationToken);
+                page = await ReloadAfterDelay(fromPositionInclusive, maxCount, prefetchJsonData, ReadNext, cancellationToken).ConfigureAwait(false);
                 break;
             }
 
@@ -120,8 +120,8 @@ namespace SqlStreamStore.Infrastructure
                 maxCount);
 
             ReadNextAllPage readNext = (nextPosition, ct) => ReadAllBackwards(nextPosition, maxCount, prefetchJsonData, ct);
-            var page = await ReadAllBackwardsInternal(fromPositionInclusive, maxCount, prefetchJsonData, readNext, cancellationToken);
-            return await FilterExpired(page, readNext, cancellationToken);
+            var page = await ReadAllBackwardsInternal(fromPositionInclusive, maxCount, prefetchJsonData, readNext, cancellationToken).ConfigureAwait(false);
+            return await FilterExpired(page, readNext, cancellationToken).ConfigureAwait(false);
         }
 
         public async Task<ReadStreamPage> ReadStreamForwards(
@@ -145,8 +145,8 @@ namespace SqlStreamStore.Infrastructure
 
             ReadNextStreamPage readNext = (nextVersion, ct) => ReadStreamForwards(streamId, nextVersion, maxCount, prefetchJsonData, ct);
             var page = await ReadStreamForwardsInternal(streamId, fromVersionInclusive, maxCount, prefetchJsonData,
-                readNext, cancellationToken);
-            return await FilterExpired(page, readNext, cancellationToken);
+                readNext, cancellationToken).ConfigureAwait(false);
+            return await FilterExpired(page, readNext, cancellationToken).ConfigureAwait(false);
         }
 
         public async Task<ReadStreamPage> ReadStreamBackwards(
@@ -171,8 +171,8 @@ namespace SqlStreamStore.Infrastructure
             ReadNextStreamPage readNext =
                 (nextVersion, ct) => ReadStreamBackwards(streamId, nextVersion, maxCount, prefetchJsonData, ct);
             var page = await ReadStreamBackwardsInternal(streamId, fromVersionInclusive, maxCount, prefetchJsonData, readNext,
-                cancellationToken);
-            return await FilterExpired(page, readNext, cancellationToken);
+                cancellationToken).ConfigureAwait(false);
+            return await FilterExpired(page, readNext, cancellationToken).ConfigureAwait(false);
         }
 
         public IStreamSubscription SubscribeToStream(
@@ -379,7 +379,7 @@ namespace SqlStreamStore.Infrastructure
             CancellationToken cancellationToken)
         {
             Logger.Info("ReadAllForwards: gap detected in position, reloading after {DefaultReloadInterval}ms", DefaultReloadInterval);
-            await Task.Delay(DefaultReloadInterval, cancellationToken);
+            await Task.Delay(DefaultReloadInterval, cancellationToken).ConfigureAwait(false);
             var reloadedPage = await ReadAllForwardsInternal(fromPositionInclusive, maxCount, prefetch, readNext, cancellationToken)
                 .ConfigureAwait(false);
             return await FilterExpired(reloadedPage, readNext, cancellationToken).ConfigureAwait(false);
@@ -397,7 +397,7 @@ namespace SqlStreamStore.Infrastructure
 
             int? maxAge = _metadataMaxAgeCache == null
                 ? null
-                : await _metadataMaxAgeCache.GetMaxAge(page.StreamId, cancellationToken);
+                : await _metadataMaxAgeCache.GetMaxAge(page.StreamId, cancellationToken).ConfigureAwait(false);
             if (!maxAge.HasValue)
             {
                 return page;
@@ -448,7 +448,7 @@ namespace SqlStreamStore.Infrastructure
                 }
                 int? maxAge = _metadataMaxAgeCache == null
                     ? null
-                    : await _metadataMaxAgeCache.GetMaxAge(streamMessage.StreamId, cancellationToken);
+                    : await _metadataMaxAgeCache.GetMaxAge(streamMessage.StreamId, cancellationToken).ConfigureAwait(false);
                 if (!maxAge.HasValue)
                 {
                     valid.Add(streamMessage);

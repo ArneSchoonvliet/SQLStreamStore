@@ -39,7 +39,6 @@
         {
             var numberOfStreams = 100;
             int parallelTasks = 16;
-            int numberOfMessagesToWrite = 100;
             //var numberOfStreams = Input.ReadInt("Number of streams: ", 1, 100000000);
 
             //int parallelTasks = Input.ReadInt(

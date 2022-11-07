@@ -73,7 +73,7 @@ namespace SqlStreamStore.Infrastructure
             int expectedVersion,
             CancellationToken cancellationToken)
         {
-            var position = await ReadHeadPosition(cancellationToken);
+            var position = await ReadHeadPosition(cancellationToken).ConfigureAwait(false);
             return new AppendResult(expectedVersion, position);
         }
 

@@ -341,7 +341,7 @@
                         ct);
 
                 }
-                catch (OperationCanceledException ex)
+                catch (OperationCanceledException)
                 {
                     //Output.WriteLine(ex.ToString());
                     break;
