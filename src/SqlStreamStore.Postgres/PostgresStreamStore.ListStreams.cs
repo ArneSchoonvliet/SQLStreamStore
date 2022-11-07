@@ -24,7 +24,7 @@ namespace SqlStreamStore
             var streamIds = new List<string>();
 
             using(var connection = await OpenConnection(cancellationToken))
-            using(var transaction = connection.BeginTransaction())
+            using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
             using(var command = GetListStreamsCommand(pattern, maxCount, afterIdInternal, transaction))
             using(var reader = await command
                 .ExecuteReaderAsync(cancellationToken)

@@ -195,7 +195,7 @@
         private async Task<bool> ReadAnyTransactionsInProgress(TxIdList transactionIds, CancellationToken cancellationToken)
         {
             using(var connection = await OpenConnection(cancellationToken))
-            using(var transaction = connection.BeginTransaction())
+            using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
             using(var command = BuildFunctionCommand(_schema.ReadAnyTransactionsInProgress, transaction, Parameters.Name(connection.Database), Parameters.TransactionIds(transactionIds)))
             {
                 var result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as bool?;
@@ -216,7 +216,7 @@
             var refcursorSql = new StringBuilder();
 
             using(var connection = await OpenConnection(cancellationToken))
-            using(var transaction = connection.BeginTransaction())
+            using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
             {
                 using(var command = BuildFunctionCommand(_schema.ReadAll,
                           transaction,
@@ -287,7 +287,7 @@
             var refcursorSql = new StringBuilder();
 
             using(var connection = await OpenConnection(cancellationToken))
-            using(var transaction = connection.BeginTransaction())
+            using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
             {
                 using(var command = BuildFunctionCommand(_schema.ReadAll,
                           transaction,

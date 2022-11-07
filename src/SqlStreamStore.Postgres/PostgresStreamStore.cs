@@ -78,7 +78,7 @@
             using(var connection = _createConnection())
             {
                 await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-                using(var transaction = connection.BeginTransaction())
+                using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
                 {
                     using(var command = BuildCommand($"CREATE SCHEMA IF NOT EXISTS {_settings.Schema}", transaction))
                     {
@@ -107,7 +107,7 @@
             using(var connection = _createConnection())
             {
                 await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-                using(var transaction = connection.BeginTransaction())
+                using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
                 using(var command = BuildCommand(_schema.DropAll, transaction))
                 {
                     await command
@@ -129,7 +129,7 @@
             using(var connection = _createConnection())
             {
                 await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-                using(var transaction = connection.BeginTransaction())
+                using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
                 using(var command = BuildFunctionCommand(_schema.ReadSchemaVersion, transaction))
                 {
                     var result = (int) await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
@@ -143,7 +143,7 @@
             => async cancellationToken =>
             {
                 using(var connection = await OpenConnection(cancellationToken))
-                using(var transaction = connection.BeginTransaction())
+                using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
                 using(var command = BuildFunctionCommand(
                     _schema.ReadJsonData,
                     transaction,
@@ -199,7 +199,7 @@
             try
             {
                 using(var connection = await OpenConnection(cancellationToken))
-                using(var transaction = connection.BeginTransaction())
+                using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
                 {
                     var deletedMessageIds = new List<Guid>();
                     using(var command = BuildFunctionCommand(

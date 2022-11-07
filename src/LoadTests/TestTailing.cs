@@ -208,7 +208,7 @@
                 }.ToArray();
 
                 using (var connection = await OpenConnection(connectionString, scheme, cancellationToken))
-                using (var transaction = connection.BeginTransaction())
+                using (var transaction = await connection.BeginTransactionAsync(cancellationToken))
                 using (var command = BuildFunctionCommand(
                           schema.AppendToStream,
                           transaction,

@@ -15,7 +15,7 @@
             var streamIdInfo = new StreamIdInfo(streamId);
 
             using(var connection = await OpenConnection(cancellationToken))
-            using(var transaction = connection.BeginTransaction())
+            using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
             {
                 return await GetStreamMetadataInternal(streamIdInfo, transaction, cancellationToken);
             }
@@ -72,7 +72,7 @@
             var streamIdInfo = new StreamIdInfo(streamId);
 
             using(var connection = await OpenConnection(cancellationToken))
-            using(var transaction = connection.BeginTransaction())
+            using(var transaction = await connection.BeginTransactionAsync(cancellationToken))
             using(var command = BuildFunctionCommand(
                 _schema.SetStreamMetadata,
                 transaction,
