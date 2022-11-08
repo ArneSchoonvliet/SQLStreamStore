@@ -97,7 +97,10 @@
             {
                 var expectedNextPosition = messages[i].Position + 1;
                 var actualPosition = messages[i + 1].Position;
-                Logger.TraceFormat("Correlation: {correlation} Gap checking. Expected position: {expectedNextPosition} | Actual position: {actualPosition}", correlation, expectedNextPosition, actualPosition);
+                Logger.TraceFormat("Correlation: {correlation} Gap checking. Expected position: {expectedNextPosition} | Actual position: {actualPosition}",
+                    correlation,
+                    expectedNextPosition,
+                    actualPosition);
 
                 if(expectedNextPosition != actualPosition)
                 {
@@ -378,7 +381,8 @@
 
             if(prefetch)
             {
-                return (new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, await ReadString(7).ConfigureAwait(false)), reader.GetFieldValue<int?>(8), position);
+                return (new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, await ReadString(7).ConfigureAwait(false)),
+                    reader.GetFieldValue<int?>(8), position);
             }
 
             return (new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, ct => GetJsonData(streamId, streamVersion)(ct)),
