@@ -72,7 +72,6 @@
             if(!(transactionsInProgress.Count > 0))
             {
                 Logger.TraceFormat("Correlation: {correlation} No transactions in progress, no need for gap checking", correlation);
-
                 return (messages, maxAgeDict, isEnd);
             }
 
