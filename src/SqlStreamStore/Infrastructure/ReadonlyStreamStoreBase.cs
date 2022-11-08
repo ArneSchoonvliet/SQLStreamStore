@@ -28,14 +28,17 @@ namespace SqlStreamStore.Infrastructure
             TimeSpan metadataMaxAgeCacheExpiry,
             int metadataMaxAgeCacheMaxSize,
             GetUtcNow getUtcNow,
-            string logName, GapHandlingSettings gapHandlingSettings = null)
+            string logName,
+            GapHandlingSettings gapHandlingSettings = null)
         {
             _getUtcNow = getUtcNow ?? SystemClock.GetUtcNow;
             Logger = LogProvider.GetLogger(logName);
 
-            _metadataMaxAgeCache = new MetadataMaxAgeCache(this, metadataMaxAgeCacheExpiry,
-                metadataMaxAgeCacheMaxSize, _getUtcNow);
-            
+            _metadataMaxAgeCache = new MetadataMaxAgeCache(this,
+                metadataMaxAgeCacheExpiry,
+                metadataMaxAgeCacheMaxSize,
+                _getUtcNow);
+
             _gapHandlingSettings = gapHandlingSettings;
         }
 
@@ -60,7 +63,9 @@ namespace SqlStreamStore.Infrastructure
             cancellationToken.ThrowIfCancellationRequested();
 
             Logger.DebugFormat("ReadAllForwards from position {fromPositionInclusive} with max count " +
-                                   "{maxCount}.", fromPositionInclusive, maxCount);
+                               "{maxCount}.",
+                fromPositionInclusive,
+                maxCount);
 
             Task<ReadAllPage> ReadNext(long nextPosition, CancellationToken ct) => ReadAllForwards(nextPosition, maxCount, prefetchJsonData, ct);
 
@@ -78,20 +83,19 @@ namespace SqlStreamStore.Infrastructure
             // number reservation of in-flight transactions.
             // Here we check if there are any gaps, and in the unlikely event there is, we delay a little bit
             // and re-issue the read. This is expected
-            
-            if (!page.IsEnd || page.Messages.Length <= 1)
+            if(!page.IsEnd || page.Messages.Length <= 1)
             {
                 return await FilterExpired(page, ReadNext, cancellationToken).ConfigureAwait(false);
             }
-            
+
             // Check for gap between last page and this.
-            if (page.Messages[0].Position != fromPositionInclusive)
+            if(page.Messages[0].Position != fromPositionInclusive)
             {
                 page = await ReloadAfterDelay(fromPositionInclusive, maxCount, prefetchJsonData, ReadNext, cancellationToken).ConfigureAwait(false);
             }
-            
+
             // check for gap in messages collection
-            for (int i = 0; i < page.Messages.Length - 1; i++)
+            for(int i = 0; i < page.Messages.Length - 1; i++)
             {
                 if(page.Messages[i].Position + 1 == page.Messages[i + 1].Position)
                     continue;
@@ -144,8 +148,12 @@ namespace SqlStreamStore.Infrastructure
                 maxCount);
 
             ReadNextStreamPage readNext = (nextVersion, ct) => ReadStreamForwards(streamId, nextVersion, maxCount, prefetchJsonData, ct);
-            var page = await ReadStreamForwardsInternal(streamId, fromVersionInclusive, maxCount, prefetchJsonData,
-                readNext, cancellationToken).ConfigureAwait(false);
+            var page = await ReadStreamForwardsInternal(streamId,
+                fromVersionInclusive,
+                maxCount,
+                prefetchJsonData,
+                readNext,
+                cancellationToken).ConfigureAwait(false);
             return await FilterExpired(page, readNext, cancellationToken).ConfigureAwait(false);
         }
 
@@ -170,7 +178,11 @@ namespace SqlStreamStore.Infrastructure
 
             ReadNextStreamPage readNext =
                 (nextVersion, ct) => ReadStreamBackwards(streamId, nextVersion, maxCount, prefetchJsonData, ct);
-            var page = await ReadStreamBackwardsInternal(streamId, fromVersionInclusive, maxCount, prefetchJsonData, readNext,
+            var page = await ReadStreamBackwardsInternal(streamId,
+                fromVersionInclusive,
+                maxCount,
+                prefetchJsonData,
+                readNext,
                 cancellationToken).ConfigureAwait(false);
             return await FilterExpired(page, readNext, cancellationToken).ConfigureAwait(false);
         }
@@ -221,11 +233,11 @@ namespace SqlStreamStore.Infrastructure
         }
 
         public Task<StreamMetadataResult> GetStreamMetadata(
-           string streamId,
-           CancellationToken cancellationToken = default)
+            string streamId,
+            CancellationToken cancellationToken = default)
         {
-            if (streamId == null) throw new ArgumentNullException(nameof(streamId));
-            if (streamId.StartsWith("$") && streamId != Deleted.DeletedStreamId)
+            if(streamId == null) throw new ArgumentNullException(nameof(streamId));
+            if(streamId.StartsWith("$") && streamId != Deleted.DeletedStreamId)
             {
                 throw new ArgumentException("Must not start with '$'", nameof(streamId));
             }
@@ -244,7 +256,7 @@ namespace SqlStreamStore.Infrastructure
 
         public Task<long> ReadStreamHeadPosition(StreamId streamId, CancellationToken cancellationToken = default)
         {
-            if (streamId == null) throw new ArgumentNullException(nameof(streamId));
+            if(streamId == null) throw new ArgumentNullException(nameof(streamId));
 
             GuardAgainstDisposed();
 
@@ -253,7 +265,7 @@ namespace SqlStreamStore.Infrastructure
 
         public Task<int> ReadStreamHeadVersion(StreamId streamId, CancellationToken cancellationToken = default)
         {
-            if (streamId == null) throw new ArgumentNullException(nameof(streamId));
+            if(streamId == null) throw new ArgumentNullException(nameof(streamId));
 
             GuardAgainstDisposed();
 
@@ -324,7 +336,8 @@ namespace SqlStreamStore.Infrastructure
             int fromVersionInclusive,
             int count,
             bool prefetch,
-            ReadNextStreamPage readNext, CancellationToken cancellationToken);
+            ReadNextStreamPage readNext,
+            CancellationToken cancellationToken);
 
         protected abstract Task<long> ReadHeadPositionInternal(CancellationToken cancellationToken);
         protected abstract Task<long> ReadStreamHeadPositionInternal(string streamId, CancellationToken cancellationToken);
@@ -359,7 +372,7 @@ namespace SqlStreamStore.Infrastructure
             CancellationToken cancellationToken);
 
         protected virtual void Dispose(bool disposing)
-        {}
+        { }
 
         protected void GuardAgainstDisposed()
         {
@@ -398,10 +411,11 @@ namespace SqlStreamStore.Infrastructure
             int? maxAge = _metadataMaxAgeCache == null
                 ? null
                 : await _metadataMaxAgeCache.GetMaxAge(page.StreamId, cancellationToken).ConfigureAwait(false);
-            if (!maxAge.HasValue)
+            if(!maxAge.HasValue)
             {
                 return page;
             }
+
             var currentUtc = _getUtcNow();
             var valid = new List<StreamMessage>();
             foreach(var message in page.Messages)
@@ -415,6 +429,7 @@ namespace SqlStreamStore.Infrastructure
                     PurgeExpiredMessage(message);
                 }
             }
+
             return new ReadStreamPage(
                 page.StreamId,
                 page.Status,
@@ -429,32 +444,35 @@ namespace SqlStreamStore.Infrastructure
         }
 
         private async Task<ReadAllPage> FilterExpired(
-           ReadAllPage readAllPage,
-           ReadNextAllPage readNext,
-           CancellationToken cancellationToken)
+            ReadAllPage readAllPage,
+            ReadNextAllPage readNext,
+            CancellationToken cancellationToken)
         {
             if(_disableMetadataCache)
             {
                 return readAllPage;
             }
+
             var valid = new List<StreamMessage>();
             var currentUtc = _getUtcNow();
-            foreach (var streamMessage in readAllPage.Messages)
+            foreach(var streamMessage in readAllPage.Messages)
             {
                 if(streamMessage.StreamId.StartsWith("$"))
                 {
                     valid.Add(streamMessage);
                     continue;
                 }
+
                 int? maxAge = _metadataMaxAgeCache == null
                     ? null
                     : await _metadataMaxAgeCache.GetMaxAge(streamMessage.StreamId, cancellationToken).ConfigureAwait(false);
-                if (!maxAge.HasValue)
+                if(!maxAge.HasValue)
                 {
                     valid.Add(streamMessage);
                     continue;
                 }
-                if (streamMessage.CreatedUtc.AddSeconds(maxAge.Value) > currentUtc)
+
+                if(streamMessage.CreatedUtc.AddSeconds(maxAge.Value) > currentUtc)
                 {
                     valid.Add(streamMessage);
                 }
@@ -463,6 +481,7 @@ namespace SqlStreamStore.Infrastructure
                     PurgeExpiredMessage(streamMessage);
                 }
             }
+
             return new ReadAllPage(
                 readAllPage.FromPosition,
                 readAllPage.NextPosition,
@@ -479,19 +498,21 @@ namespace SqlStreamStore.Infrastructure
 
             var valid = new List<StreamMessage>();
             var currentUtc = _getUtcNow();
-            foreach (var message in messages)
+            foreach(var message in messages)
             {
-                if (message.StreamId.StartsWith("$"))
+                if(message.StreamId.StartsWith("$"))
                 {
                     valid.Add(message);
                     continue;
                 }
-                if (!maxAgeDict.TryGetValue(message.StreamId, out int maxAge) || maxAge <= 0)
+
+                if(!maxAgeDict.TryGetValue(message.StreamId, out int maxAge) || maxAge <= 0)
                 {
                     valid.Add(message);
                     continue;
                 }
-                if (message.CreatedUtc.AddSeconds(maxAge) > currentUtc)
+
+                if(message.CreatedUtc.AddSeconds(maxAge) > currentUtc)
                 {
                     valid.Add(message);
                 }
@@ -500,6 +521,7 @@ namespace SqlStreamStore.Infrastructure
                     PurgeExpiredMessage(message);
                 }
             }
+
             return valid.AsReadOnly();
         }
 
