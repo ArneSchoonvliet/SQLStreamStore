@@ -62,8 +62,7 @@ namespace SqlStreamStore.Infrastructure
             GuardAgainstDisposed();
             cancellationToken.ThrowIfCancellationRequested();
 
-            Logger.DebugFormat("ReadAllForwards from position {fromPositionInclusive} with max count " +
-                               "{maxCount}.",
+            Logger.DebugFormat("ReadAllForwards from position {fromPositionInclusive} with max count {maxCount}.",
                 fromPositionInclusive,
                 maxCount);
 
