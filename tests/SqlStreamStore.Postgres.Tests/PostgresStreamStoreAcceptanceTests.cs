@@ -29,7 +29,7 @@
             {
                 var result = await fixture.PostgresStreamStore.CheckSchema();
 
-                result.ShouldBe(new CheckSchemaResult(2, 2));
+                result.ShouldBe(new CheckSchemaResult(3, 3));
                 result.IsMatch.ShouldBeTrue();
             }
         }
@@ -38,10 +38,11 @@
         public async Task Can_export_database_migration_script()
         {
             var schema = "custom_schema";
-            using(var fixture = await _fixturePool.Get(TestOutputHelper, new Version(14, 5), schema))
+            var version = new Version(14, 5);
+            using(var fixture = await _fixturePool.Get(TestOutputHelper, version, schema))
             {
                 var sqlScript = fixture.PostgresStreamStore.GetMigrationScript();
-                sqlScript.ShouldBe(new Scripts(schema).Migration);
+                sqlScript.ShouldBe(new Scripts(schema).Migration(version));
             }
         }
 

@@ -25,11 +25,17 @@
         public override async Task Run(CancellationToken ct)
         {
             Output.WriteLine("");
-            Output.WriteLine(ConsoleColor.Green, "Appends events to streams and reads them all back in a single task.");
+            Output.WriteLine(ConsoleColor.Green, "Subscription that tails head with delayed appends does no skip events when using new gap handling.");
             Output.WriteLine("");
 
             const string scheme = "tailing";
             var (streamStore, dispose, connectionString) = await GetStore(ct, scheme);
+
+            if(streamStore is InMemoryStreamStore)
+            {
+                Output.WriteLine($"No support for {nameof(InMemoryStreamStore)} for this test.");
+                return;
+            }
 
             try
             {

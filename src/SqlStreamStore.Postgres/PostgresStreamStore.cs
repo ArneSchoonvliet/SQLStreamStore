@@ -21,7 +21,7 @@
         private readonly Schema _schema;
         private readonly Lazy<IStreamStoreNotifier> _streamStoreNotifier;
 
-        public const int CurrentVersion = 2;
+        public const int CurrentVersion = 3;
 
         /// <summary>
         ///     Initializes a new instance of <see cref="PostgresStreamStore"/>
@@ -266,7 +266,7 @@
         /// <returns>The database creation script.</returns>
         public string GetMigrationScript()
         {
-            return _schema.Migration;
+            return _schema.Migration(_settings.Version);
         }
     }
 }
