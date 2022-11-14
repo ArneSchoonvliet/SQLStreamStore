@@ -55,7 +55,6 @@
                 await Task.Delay(10000, ct);
                 linkedToken.Cancel();
 
-
                 await WriteActualGaps(ct, streamStore);
 
                 Output.WriteLine("Done");
