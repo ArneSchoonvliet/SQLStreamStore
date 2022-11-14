@@ -2,7 +2,7 @@
   <PropertyGroup>
     <Description>Postgre SQL provider for SQL StreamStore</Description>
     <AssemblyTitle>Stream Store - Postgres</AssemblyTitle>
-    <TargetFrameworks>net5.0</TargetFrameworks>
+    <TargetFramework>net6.0</TargetFramework>
     <AssemblyName>SqlStreamStore.Postgres</AssemblyName>
     <PackageId>SqlStreamStore.Postgres</PackageId>
     <RootNamespace>SqlStreamStore</RootNamespace>

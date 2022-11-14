@@ -58,8 +58,7 @@
         private string Scavenge => GetScript(nameof(Scavenge));
 
         private string SetStreamMetadata => GetScript(nameof(SetStreamMetadata));
-
-        public string Migration => GetScript(nameof(Migration));
+        public string Migration(Version version) => version < new Version("13.0") ? GetScript("MigrationOld") : GetScript("Migration");
 
         public string CreateSchema(Version version) => string.Join(
             Environment.NewLine,

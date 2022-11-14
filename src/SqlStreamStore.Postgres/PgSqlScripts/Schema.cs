@@ -8,7 +8,7 @@
         private readonly Scripts _scripts;
 
         public string Definition(Version version) => _scripts.CreateSchema(version);
-        public string Migration => _scripts.Migration;
+        public string Migration(Version version) => _scripts.Migration(version);
         public string DropAll => _scripts.DropAll;
         public string EnableExplainAnalyze => _scripts.EnableExplainAnalyze;
 
