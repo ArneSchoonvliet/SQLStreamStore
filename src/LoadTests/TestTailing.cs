@@ -25,7 +25,7 @@
         public override async Task Run(CancellationToken ct)
         {
             Output.WriteLine("");
-            Output.WriteLine(ConsoleColor.Green, "Subscription that tails head with delayed appends does no skip events when using new gap handling.");
+            Output.WriteLine(ConsoleColor.Green, "Subscription that tails head with delayed appends.");
             Output.WriteLine("");
 
             const string scheme = "tailing";
