@@ -47,13 +47,13 @@ internal class BasicRead : LoadTest
                                     messageNumbers[t] = count++;
                                 }
 
-                                var newmessages = MessageFactory
+                                var newMessages = MessageFactory
                                     .CreateNewStreamMessages(jsonData, messageNumbers);
 
                                 await streamStore.AppendToStream(
                                     $"stream-{j + i}",
                                     ExpectedVersion.Any,
-                                    newmessages,
+                                    newMessages,
                                     ct);
                                 // Uncomment if you want more logging in console
                                 // Console.Write($"> {messageNumbers[numberOfMessagesPerAmend - 1]}");

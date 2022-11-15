@@ -167,13 +167,13 @@
                         messageNumbers[j] = count++;
                     }
 
-                    var newmessages = MessageFactory
+                    var newMessages = MessageFactory
                         .CreateNewStreamMessages(jsonData, messageNumbers);
 
                     await streamStore.AppendToStream(
                         $"stream-{i + offset}",
                         ExpectedVersion.Any,
-                        newmessages,
+                        newMessages,
                         ct);
                     //Console.Write($"> {messageNumbers[numberOfMessagesPerAmend - 1]}");
                 }

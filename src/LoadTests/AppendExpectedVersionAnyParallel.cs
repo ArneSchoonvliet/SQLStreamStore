@@ -69,7 +69,7 @@
                                 messageNumbers[j] = Interlocked.Increment(ref count);
                             }
 
-                            var newmessages = MessageFactory
+                            var newMessages = MessageFactory
                                 .CreateNewStreamMessages(jsonData, messageNumbers);
 
                             var info = $"{streamNumber}";
@@ -78,7 +78,7 @@
                             await streamStore.AppendToStream(
                                 $"stream-{streamNumber}",
                                 ExpectedVersion.Any,
-                                newmessages,
+                                newMessages,
                                 ct);
                             Log.Logger.Information($"End   {info}");
                             Console.Write($"\r> {messageNumbers[numberOfMessagesPerAmend - 1]}");
