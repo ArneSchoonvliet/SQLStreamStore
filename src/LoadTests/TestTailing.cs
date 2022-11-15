@@ -165,15 +165,15 @@
 
                 db.AddRange(page.Messages.Select(x => x.Position));
 
-                while (true)
+                // It's possible that s_db.Last() will never be equal to head (skipped event) hence why we time limit this loop.
+                var maxLoopTime = sw.ElapsedMilliseconds + TimeSpan.FromSeconds(30).Milliseconds;
+                while (sw.ElapsedMilliseconds < maxLoopTime)
                 {
                     var head = await streamStore.ReadHeadPosition(linkedToken.Token);
                     lock (s_lock)
                     {
                         if (head == s_db.Last())
-                        {
                             break;
-                        }
                     }
 
                     await Task.Delay(150, linkedToken.Token);
