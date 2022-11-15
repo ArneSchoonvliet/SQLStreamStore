@@ -57,11 +57,16 @@
         {
             var hasMessages = messages.Count > 0;
             var hasTransactionsInProgress = transactionsInProgress.Count > 0;
-            
-            Logger.TraceFormat("Correlation: {correlation} | {messages} | Transactions in progress: {transactions}",
-                correlation,
-                hasMessages ? $"Count: {messages.Count} | {string.Join("|", messages.Select((x, i) => $"Position: {x.Position} Array index: {i}"))}" : "No messages",
-                transactionsInProgress);
+
+            // We do this as otherwise the Select always enumerates even when trace log is disabled.
+            // When we retrieve high amount of messages this will impact the performance.
+            if(Logger.IsTraceEnabled())
+            {
+                Logger.TraceFormat("Correlation: {correlation} | {messages} | Transactions in progress: {transactions}",
+                    correlation,
+                    hasMessages ? $"Count: {messages.Count} | {string.Join("|", messages.Select((x, i) => $"Position: {x.Position} Array index: {i}"))}" : "No messages",
+                    transactionsInProgress);
+            }
             
             if(!hasMessages && !hasTransactionsInProgress)
             {
