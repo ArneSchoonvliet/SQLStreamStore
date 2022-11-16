@@ -1,6 +1,6 @@
 COMMENT ON SCHEMA __schema__ IS '{ "version": 3 }';
 
-DROP FUNCTION __schema__.read_all(int4, int8, bool, bool);
+DROP FUNCTION __schema__.read_all2(int4, int8, bool, bool);
 CREATE OR REPLACE FUNCTION __schema__.read_all2(
   _count    INT,
   _position BIGINT,
