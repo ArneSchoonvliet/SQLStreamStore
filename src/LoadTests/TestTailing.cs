@@ -28,15 +28,15 @@
             Output.WriteLine(ConsoleColor.Green, "Subscription that tails head with delayed appends.");
             Output.WriteLine("");
 
-            const string scheme = "tailing";
-            var (streamStore, dispose, connectionString) = await GetStore(ct, scheme);
+            const string schemaName = "tailing";
+            var (streamStore, dispose) = await GetStore(ct, schemaName);
 
-            if(streamStore is InMemoryStreamStore)
+            if(streamStore is not PostgresStreamStore pgStreamStore)
             {
-                Output.WriteLine($"No support for {nameof(InMemoryStreamStore)} for this test.");
+                Output.WriteLine($"No support for {nameof(streamStore)} for this test.");
                 return;
             }
-
+            
             try
             {
                 var numberOfStreams = Input.ReadInt("Number of streams: ", 1, 100000000);
@@ -49,7 +49,7 @@
                 var linkedToken = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
-                Task.Run(() => RunSubscribe(streamStore, readPageSize), linkedToken.Token);
+                Task.Run(() => RunSubscribe(pgStreamStore, readPageSize), linkedToken.Token);
 #pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
 
                 var sw = Stopwatch.StartNew();
@@ -70,7 +70,7 @@
                     if (sw.ElapsedMilliseconds >= nextTimeLog)
                     {
                         nextTimeLog += 300;
-                        var head = await streamStore.ReadHeadPosition(linkedToken.Token);
+                        var head = await pgStreamStore.ReadHeadPosition(linkedToken.Token);
 
                         lock (s_lock)
                         {
@@ -95,7 +95,7 @@
                                         numberOfStreams,
                                         concurrentWrite.Count * numberOfStreams,
                                         jsonData,
-                                        streamStore),
+                                        pgStreamStore),
                                 cts.Token);
                             concurrentWrite.Add((cts, t));
                         }
@@ -116,8 +116,8 @@
                         nextTimeDelayTx += 1000;
                         var cts = new CancellationTokenSource();
                         var t = Task.Run(() =>
-                                AddTransaction(connectionString,
-                                    scheme,
+                                AddTransaction(pgStreamStore,
+                                    schemaName,
                                     3050,
                                     jsonData,
                                     numberOfMessagesPerAmend,
@@ -156,7 +156,7 @@
                 Output.WriteLine("Writes finished");
 
                 var db = new List<long>();
-                ReadAllPage page = await streamStore.ReadAllForwards(Position.Start, 500, false, ct);
+                ReadAllPage page = await pgStreamStore.ReadAllForwards(Position.Start, 500, false, ct);
                 do
                 {
                     db.AddRange(page.Messages.Select(x => x.Position));
@@ -169,7 +169,7 @@
                 var maxLoopTime = sw.ElapsedMilliseconds + TimeSpan.FromSeconds(30).Milliseconds;
                 while (sw.ElapsedMilliseconds < maxLoopTime)
                 {
-                    var head = await streamStore.ReadHeadPosition(linkedToken.Token);
+                    var head = await pgStreamStore.ReadHeadPosition(linkedToken.Token);
                     lock (s_lock)
                     {
                         if (head == s_db.Last())
@@ -194,15 +194,13 @@
             }
         }
 
-        private static async Task AddTransaction(string connectionString, string scheme, int delayCommitTime, string jsonData, int numberOfMessagesPerAmend, CancellationToken cancellationToken)
+        private static async Task AddTransaction(PostgresStreamStore streamStore, string schemaName, int delayCommitTime, string jsonData, int numberOfMessagesPerAmend, CancellationToken cancellationToken)
         {
             try
             {
-                var expectedVersion = ExpectedVersion.Any;
-
+                const int expectedVersion = ExpectedVersion.Any;
                 var streamId = $"transactiontest/{Guid.NewGuid()}";
-
-                var schema = new Schema(scheme);
+                var schema = new Schema(schemaName);
 
                 AppendResult result;
 
@@ -213,7 +211,7 @@
                     new NewStreamMessage(Guid.NewGuid(), "TestTransaction", "{}")
                 }.ToArray();
 
-                using (var connection = await OpenConnection(connectionString, scheme, cancellationToken))
+                using (var connection = await streamStore.OpenConnection(cancellationToken))
                 using (var transaction = await connection.BeginTransactionAsync(cancellationToken))
                 using (var command = BuildFunctionCommand(
                           schema.AppendToStream,
@@ -232,13 +230,11 @@
                                   .ConfigureAwait(false))
                         {
                             await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-
                             result = new AppendResult(reader.GetInt32(0), reader.GetInt64(1));
                         }
 
 
                         await Task.Delay(delayCommitTime, cancellationToken);
-
                         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                     }
                     catch (PostgresException ex) when (ex.IsWrongExpectedVersion())
@@ -263,20 +259,6 @@
             {
                 Output.WriteLine(ex.ToString());
             }
-        }
-
-        private static async Task<NpgsqlConnection> OpenConnection(string connectionString, string scheme, CancellationToken cancellationToken)
-        {
-            var connection = new NpgsqlConnection(connectionString);
-            var schema = new Schema(scheme);
-
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-            connection.ReloadTypes();
-
-            connection.TypeMapper.MapComposite<PostgresNewStreamMessage>(schema.NewStreamMessage);
-
-            return connection;
         }
 
         private static NpgsqlCommand BuildFunctionCommand(

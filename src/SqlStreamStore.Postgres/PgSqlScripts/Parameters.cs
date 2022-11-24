@@ -1,7 +1,6 @@
 ﻿namespace SqlStreamStore.PgSqlScripts
 {
     using System;
-    using System.Linq;
     using Npgsql;
     using NpgsqlTypes;
     using SqlStreamStore.Infrastructure;

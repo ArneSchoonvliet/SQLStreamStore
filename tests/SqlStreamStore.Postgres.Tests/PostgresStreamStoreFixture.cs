@@ -1,6 +1,7 @@
 namespace SqlStreamStore
 {
     using System;
+    using System.Threading;
     using System.Threading.Tasks;
     using Npgsql;
     using SqlStreamStore.Infrastructure;
@@ -67,10 +68,8 @@ namespace SqlStreamStore
             await PostgresStreamStore.CreateSchemaIfNotExists();
             if (_preparedPreviously)
             {
-                using (var connection = new NpgsqlConnection(_settings.ConnectionString))
+                using (var connection = await PostgresStreamStore.OpenConnection(CancellationToken.None))
                 {
-                    connection.Open();
-
                     var schema = _settings.Schema;
 
                     var commandText = $"DELETE FROM {schema}.messages";

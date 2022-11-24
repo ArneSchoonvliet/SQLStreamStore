@@ -9,6 +9,8 @@
     public class PostgresStreamStoreDb : IDisposable
     {
         public string ConnectionString => _databaseManager.ConnectionString;
+        private Version Version => _databaseManager.Version;
+
         private readonly string _schema;
         private readonly PostgresContainer _databaseManager;
 
@@ -19,14 +21,12 @@
         public PostgresStreamStoreDb(string schema, Version version, ITestOutputHelper testOutputHelper)
         {
             _schema = schema;
-
             _databaseManager = new PostgresContainer($"test_{Guid.NewGuid():n}", version);
         }
 
         public PostgresStreamStoreDb(string schema, Version version, string connectionString)
         {
             _schema = schema;
-
             _databaseManager = new PostgresContainer($"test_{Guid.NewGuid():n}", version);
         }
 
@@ -43,7 +43,7 @@
         {
             await CreateDatabase();
 
-            var settings = new PostgresStreamStoreSettings(ConnectionString, new Version("9.6"), gapHandlingSettings)
+            var settings = new PostgresStreamStoreSettings(ConnectionString, Version, gapHandlingSettings)
             {
                 Schema = _schema,
                 ScavengeAsynchronously = scavengeAsynchronously

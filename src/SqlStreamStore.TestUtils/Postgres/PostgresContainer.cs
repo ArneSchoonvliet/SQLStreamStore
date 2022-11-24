@@ -15,16 +15,17 @@ namespace SqlStreamStore.TestUtils.Postgres
         private const int Port = 5432;
 
         public override string ConnectionString => ConnectionStringBuilder.ConnectionString;
+        public Version Version { get; }
 
         public PostgresContainer(string databaseName, Version version)
             : base(databaseName)
         {
-            var v = $"{version.Major}.{version.Minor}";
+            Version = version;
 
             _containerService = new Builder()
                 .UseContainer()
-                .WithName($"{ContainerName}{v}")
-                .UseImage($"postgres:{v}")
+                .WithName($"{ContainerName}{Version}")
+                .UseImage($"postgres:{Version}")
                 .KeepRunning()
                 .ReuseIfExists()
                 .WithEnvironment("POSTGRES_PASSWORD=password")

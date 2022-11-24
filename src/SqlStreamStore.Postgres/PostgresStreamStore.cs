@@ -17,7 +17,7 @@
     public partial class PostgresStreamStore : StreamStoreBase
     {
         private readonly PostgresStreamStoreSettings _settings;
-        private readonly Func<NpgsqlConnection> _createConnection;
+        private NpgsqlDataSource _dataSource;
         private readonly Schema _schema;
         private readonly Lazy<IStreamStoreNotifier> _streamStoreNotifier;
 
@@ -27,11 +27,9 @@
         ///     Initializes a new instance of <see cref="PostgresStreamStore"/>
         /// </summary>
         /// <param name="settings">A settings class to configure this instance.</param>
-        public PostgresStreamStore(PostgresStreamStoreSettings settings)
-            : base(settings.GetUtcNow, settings.LogName, settings.GapHandlingSettings)
+        public PostgresStreamStore(PostgresStreamStoreSettings settings) : base(settings.GetUtcNow, settings.LogName, settings.GapHandlingSettings)
         {
             _settings = settings;
-            _createConnection = () => _settings.ConnectionFactory(_settings.ConnectionString);
             _streamStoreNotifier = new Lazy<IStreamStoreNotifier>(() =>
             {
                 if(_settings.CreateStreamStoreNotifier == null)
@@ -43,17 +41,15 @@
                 return settings.CreateStreamStoreNotifier.Invoke(this);
             });
             _schema = new Schema(_settings.Schema);
+
+            var builder = _settings.NpgsqlDataSourceBuilder; 
+            builder.MapComposite<PostgresNewStreamMessage>(_schema.NewStreamMessage);
+            _dataSource = builder.Build();
         }
 
-        private async Task<NpgsqlConnection> OpenConnection(CancellationToken cancellationToken)
+        internal async Task<NpgsqlConnection> OpenConnection(CancellationToken cancellationToken)
         {
-            var connection = _createConnection();
-
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-            connection.ReloadTypes();
-
-            connection.TypeMapper.MapComposite<PostgresNewStreamMessage>(_schema.NewStreamMessage);
+            var connection = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
             if(_settings.ExplainAnalyze)
             {
@@ -75,9 +71,8 @@
         /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
         public async Task CreateSchemaIfNotExists(CancellationToken cancellationToken = default)
         {
-            using(var connection = _createConnection())
+            using(var connection = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false))
             {
-                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
                 using(var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
                 {
                     using(var command = BuildCommand($"CREATE SCHEMA IF NOT EXISTS {_settings.Schema}", transaction))
@@ -93,6 +88,11 @@
                     await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                 }
             }
+            
+            // We rebuild the NpgsqlDataSource since it's possible the custom types didn't exist before executing this method
+            // Since we are now sure they are added we rebuild the datasource so the custom types are mapped for sure
+            // This for example is needed in the load tests since it always creates a new schema (fresh docker container)
+            _dataSource = _settings.NpgsqlDataSourceBuilder.Build(); 
         }
 
         /// <summary>
@@ -104,9 +104,8 @@
         {
             GuardAgainstDisposed();
 
-            using(var connection = _createConnection())
+            using(var connection = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false))
             {
-                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
                 using(var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
                 using(var command = BuildCommand(_schema.DropAll, transaction))
                 {
@@ -126,70 +125,58 @@
         /// <returns>A <see cref="CheckSchemaResult"/> representing the result of the operation.</returns>
         public async Task<CheckSchemaResult> CheckSchema(CancellationToken cancellationToken = default)
         {
-            using(var connection = _createConnection())
+            using(var connection = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false))
             {
-                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
                 using(var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
                 using(var command = BuildFunctionCommand(_schema.ReadSchemaVersion, transaction))
                 {
                     var result = (int) await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-
                     return new CheckSchemaResult(result, CurrentVersion);
                 }
             }
         }
 
-        private Func<CancellationToken, Task<string>> GetJsonData(PostgresqlStreamId streamId, int version)
-            => async cancellationToken =>
-            {
-                using(var connection = await OpenConnection(cancellationToken).ConfigureAwait(false))
-                using(var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
-                using(var command = BuildFunctionCommand(
-                    _schema.ReadJsonData,
-                    transaction,
-                    Parameters.StreamId(streamId),
-                    Parameters.Version(version)))
-                using(var reader = await command
-                    .ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken)
-                    .ConfigureAwait(false))
-                {
-                    if(!await reader.ReadAsync(cancellationToken).ConfigureAwait(false) || reader.IsDBNull(0))
-                    {
-                        return null;
-                    }
-
-                    using(var textReader = reader.GetTextReader(0))
-                    {
-                        return await textReader.ReadToEndAsync().ConfigureAwait(false);
-                    }
-                }
-            };
-
-        private static NpgsqlCommand BuildFunctionCommand(
-            string function,
-            NpgsqlTransaction transaction,
-            params NpgsqlParameter[] parameters)
+        private Func<CancellationToken, Task<string>> GetJsonData(PostgresqlStreamId streamId, int version) => async cancellationToken =>
         {
-            var command = new NpgsqlCommand(function, transaction.Connection, transaction)
+            using(var connection = await OpenConnection(cancellationToken).ConfigureAwait(false))
+            using(var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
+            using(var command = BuildFunctionCommand(
+                      _schema.ReadJsonData,
+                      transaction,
+                      Parameters.StreamId(streamId),
+                      Parameters.Version(version)))
+            using(var reader = await command
+                      .ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken)
+                      .ConfigureAwait(false))
             {
-                CommandType = CommandType.StoredProcedure,
-            };
+                if(!await reader.ReadAsync(cancellationToken).ConfigureAwait(false) || reader.IsDBNull(0))
+                {
+                    return null;
+                }
+
+                using(var textReader = await reader.GetTextReaderAsync(0, cancellationToken))
+                {
+                    return await textReader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+                }
+            }
+        };
+
+        private static NpgsqlCommand BuildFunctionCommand(string function, NpgsqlTransaction transaction, params NpgsqlParameter[] parameters)
+        {
+            var command = new NpgsqlCommand(function, transaction.Connection, transaction);
 
             foreach(var parameter in parameters)
             {
                 command.Parameters.Add(parameter);
             }
 
+            command.BuildFunction();
             return command;
         }
 
-        private static NpgsqlCommand BuildCommand(
-            string commandText,
-            NpgsqlTransaction transaction) => new NpgsqlCommand(commandText, transaction.Connection, transaction);
+        private static NpgsqlCommand BuildCommand(string commandText, NpgsqlTransaction transaction) => new NpgsqlCommand(commandText, transaction.Connection, transaction);
 
-        internal async Task<int> TryScavenge(
-            StreamIdInfo streamIdInfo,
-            CancellationToken cancellationToken)
+        private async Task<int> TryScavenge(StreamIdInfo streamIdInfo, CancellationToken cancellationToken)
         {
             if(streamIdInfo.PostgresqlStreamId == PostgresqlStreamId.Deleted)
             {
@@ -203,12 +190,12 @@
                 {
                     var deletedMessageIds = new List<Guid>();
                     using(var command = BuildFunctionCommand(
-                        _schema.Scavenge,
-                        transaction,
-                        Parameters.StreamId(streamIdInfo.PostgresqlStreamId)))
+                              _schema.Scavenge,
+                              transaction,
+                              Parameters.StreamId(streamIdInfo.PostgresqlStreamId)))
                     using(var reader = await command
-                        .ExecuteReaderAsync(cancellationToken)
-                        .ConfigureAwait(false))
+                              .ExecuteReaderAsync(cancellationToken)
+                              .ConfigureAwait(false))
                     {
                         while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                         {
