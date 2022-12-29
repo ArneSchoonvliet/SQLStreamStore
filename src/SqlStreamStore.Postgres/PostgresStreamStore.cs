@@ -87,12 +87,9 @@
 
                     await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                 }
+
+                await connection.ReloadTypesAsync();
             }
-            
-            // We rebuild the NpgsqlDataSource since it's possible the custom types didn't exist before executing this method
-            // Since we are now sure they are added we rebuild the datasource so the custom types are mapped for sure
-            // This for example is needed in the load tests since it always creates a new schema (fresh docker container)
-            _dataSource = _settings.NpgsqlDataSourceBuilder.Build(); 
         }
 
         /// <summary>
