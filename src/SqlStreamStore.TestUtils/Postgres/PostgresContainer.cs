@@ -58,7 +58,7 @@ namespace SqlStreamStore.TestUtils.Postgres
             Username = "postgres",
             Host = "127.0.0.1",
             Pooling = true,
-            MaxPoolSize = 500
+            MaxPoolSize = 400
         };
     }
 }
