@@ -25,7 +25,7 @@ namespace SqlStreamStore.TestUtils.Postgres
             _containerService = new Builder()
                 .UseContainer()
                 .WithName($"{ContainerName}{Version}")
-                .UseImage($"postgres:{Version}")
+                .UseImage($"postgres:{Version}-alpine")
                 .KeepRunning()
                 .ReuseIfExists()
                 .WithEnvironment("POSTGRES_PASSWORD=password")
@@ -58,7 +58,7 @@ namespace SqlStreamStore.TestUtils.Postgres
             Username = "postgres",
             Host = "127.0.0.1",
             Pooling = true,
-            MaxPoolSize = 400
+            MaxPoolSize = 50
         };
     }
 }
