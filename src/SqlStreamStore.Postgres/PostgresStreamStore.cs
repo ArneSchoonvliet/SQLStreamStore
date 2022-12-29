@@ -255,5 +255,11 @@
         {
             return _schema.Migration(_settings.Version);
         }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            _dataSource.Dispose();
+        }
     }
 }
