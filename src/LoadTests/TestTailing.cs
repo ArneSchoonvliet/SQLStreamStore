@@ -266,16 +266,14 @@
             NpgsqlTransaction transaction,
             params NpgsqlParameter[] parameters)
         {
-            var command = new NpgsqlCommand(function, transaction.Connection, transaction)
-            {
-                CommandType = CommandType.StoredProcedure,
-            };
+            var command = new NpgsqlCommand(function, transaction.Connection, transaction);
 
             foreach (var parameter in parameters)
             {
                 command.Parameters.Add(parameter);
             }
 
+            command.BuildFunction();
             return command;
         }
 
