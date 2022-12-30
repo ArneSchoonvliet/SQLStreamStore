@@ -80,7 +80,7 @@
                         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                     }
 
-                    using(var command = BuildCommand(_schema.Definition(_settings.Version), transaction))
+                    using(var command = BuildCommand(_schema.Definition, transaction))
                     {
                         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                     }
@@ -241,7 +241,7 @@
         /// <returns>The database creation script.</returns>
         public string GetSchemaCreationScript()
         {
-            return _schema.Definition(_settings.Version);
+            return _schema.Definition;
         }
 
         /// <summary>
@@ -250,7 +250,7 @@
         /// <returns>The database creation script.</returns>
         public string GetMigrationScript()
         {
-            return _schema.Migration(_settings.Version);
+            return _schema.Migration;
         }
 
         protected override void Dispose(bool disposing)

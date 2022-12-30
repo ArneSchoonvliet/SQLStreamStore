@@ -7,8 +7,8 @@
         private readonly string _schema;
         private readonly Scripts _scripts;
 
-        public string Definition(Version version) => _scripts.CreateSchema(version);
-        public string Migration(Version version) => _scripts.Migration(version);
+        public string Definition => _scripts.CreateSchema;
+        public string Migration => _scripts.Migration;
         public string DropAll => _scripts.DropAll;
         public string EnableExplainAnalyze => _scripts.EnableExplainAnalyze;
 
@@ -23,7 +23,7 @@
         public string ListStreamsStartingWith => $"{_schema}.list_streams_starting_with";
         public string ListStreamsEndingWith => $"{_schema}.list_streams_ending_with";
         public string Read => $"{_schema}.read";
-        public string ReadAll => $"{_schema}.read_all2";
+        public string ReadAll => $"{_schema}.read_all";
         public string ReadAllHeadPosition => $"{_schema}.read_head_position";
         public string ReadStreamHeadPosition => $"{_schema}.read_stream_head_position";
         public string ReadStreamHeadVersion => $"{_schema}.read_stream_head_version";

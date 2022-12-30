@@ -19,24 +19,10 @@
             Output.WriteLine(ConsoleColor.Yellow, "Store type:");
             await new Menu()
                 .AddSync("InMem", () => streamStore = new InMemoryStreamStore())
-                .Add("Postgres 9.6 (Docker)",
+                .Add("Postgres (Docker)",
                     async ct =>
                     {
-                        var fixture = new PostgresStreamStoreDb(schema, new Version(9, 6));
-                        Console.WriteLine(fixture.ConnectionString);
-                        
-                        var gapHandlingInput = Input.ReadString("Use new gap handling (y/n): ");
-                        var newGapHandlingEnabled = gapHandlingInput.ToLower() == "y";
-
-                        await fixture.Start();
-                        streamStore = await fixture.GetPostgresStreamStore(newGapHandlingEnabled ? new GapHandlingSettings(6000, 12000) : null);
-                        disposable = fixture;
-                        connectionString = fixture.ConnectionString;
-                    })
-                .Add("Postgres 14.5 (Docker)",
-                    async ct =>
-                    {
-                        var fixture = new PostgresStreamStoreDb(schema, new Version(14, 5));
+                        var fixture = new PostgresStreamStoreDb(schema);
                         Console.WriteLine(fixture.ConnectionString);
                         
                         var newGapHandlingEnabled = await Input.ReadEnum<YesNo>("Use new gap handling: ", ct) == YesNo.Yes;
@@ -51,11 +37,10 @@
                     {
                         Console.Write("Enter the connection string: ");
                         connectionString = Console.ReadLine();
-                        var postgresStreamStoreDb = new PostgresStreamStoreDb("dbo", new Version(9, 6), connectionString);
+                        var postgresStreamStoreDb = new PostgresStreamStoreDb("dbo", connectionString);
                         Console.WriteLine(postgresStreamStoreDb.ConnectionString);
                         
-                        var gapHandlingInput = Input.ReadString("Use new gap handling (y/n): ");
-                        var newGapHandlingEnabled = gapHandlingInput.ToLower() == "y";
+                        var newGapHandlingEnabled = await Input.ReadEnum<YesNo>("Use new gap handling: ", ct) == YesNo.Yes;
                         
                         streamStore = await postgresStreamStoreDb.GetPostgresStreamStore(newGapHandlingEnabled ? new GapHandlingSettings(6000, 12000) : null);
                         disposable = postgresStreamStoreDb;

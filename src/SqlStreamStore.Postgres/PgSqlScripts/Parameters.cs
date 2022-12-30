@@ -137,9 +137,10 @@
 
         public static NpgsqlParameter TransactionIds(TxIdList value)
         {
-            return new NpgsqlParameter<long[]>
+            return new NpgsqlParameter<ulong[]>
             {
-                Value = value.ToArray()
+                NpgsqlDbType = NpgsqlDbType.Xid8 | NpgsqlDbType.Array,
+                NpgsqlValue = value.ToArray()
             };
         }
 

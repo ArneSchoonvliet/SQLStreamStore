@@ -1,6 +1,5 @@
 ﻿namespace SqlStreamStore
 {
-    using System;
     using Npgsql;
     using SqlStreamStore.Imports.Ensure.That;
     using SqlStreamStore.Infrastructure;
@@ -15,10 +14,9 @@
         /// Initializes a new instance of <see cref="PostgresStreamStoreSettings"/>.
         /// </summary>
         /// <param name="connectionString">The connection string.</param>
-        /// <param name="version">Postgres server version</param>
         /// <param name="gapHandlingSettings">Settings that are used for gap handling</param>
-        public PostgresStreamStoreSettings(string connectionString, Version version, GapHandlingSettings gapHandlingSettings = null)
-            : this(new NpgsqlDataSourceBuilder(connectionString), version, gapHandlingSettings)
+        public PostgresStreamStoreSettings(string connectionString,GapHandlingSettings gapHandlingSettings = null)
+            : this(new NpgsqlDataSourceBuilder(connectionString), gapHandlingSettings)
         {
             Ensure.That(connectionString, nameof(connectionString)).IsNotNullOrWhiteSpace();
         }
@@ -27,19 +25,15 @@
         /// Initializes a new instance of <see cref="PostgresStreamStoreSettings"/>.
         /// </summary>
         /// <param name="npgsqlDataSourceBuilder">The NpgsqlDataSourceBuilder.</param>
-        /// <param name="version">Postgres server version</param>
         /// <param name="gapHandlingSettings">Settings that are used for gap handling</param>
         public PostgresStreamStoreSettings(
             NpgsqlDataSourceBuilder npgsqlDataSourceBuilder,
-            Version version,
             GapHandlingSettings gapHandlingSettings = null)
         {
             Ensure.That(npgsqlDataSourceBuilder, nameof(npgsqlDataSourceBuilder)).IsNotNull();
-            Ensure.That(version, nameof(version)).IsNotNull();
 
             NpgsqlDataSourceBuilder = npgsqlDataSourceBuilder;
             GapHandlingSettings = gapHandlingSettings;
-            Version = version;
         }
 
         /// <summary>
@@ -52,11 +46,6 @@
         ///    Settings that are used for gap handling.
         /// </summary>
         public GapHandlingSettings GapHandlingSettings { get; }
-
-        /// <summary>
-        ///    Postgres server version
-        /// </summary>
-        public Version Version { get; }
 
         /// <summary>
         ///     Allows overriding of the stream store notifier. The default implementation
