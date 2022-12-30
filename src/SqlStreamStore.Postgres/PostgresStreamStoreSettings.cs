@@ -15,32 +15,47 @@
         /// </summary>
         /// <param name="connectionString">The connection string.</param>
         /// <param name="gapHandlingSettings">Settings that are used for gap handling</param>
-        public PostgresStreamStoreSettings(string connectionString,GapHandlingSettings gapHandlingSettings = null)
-            : this(new NpgsqlDataSourceBuilder(connectionString), gapHandlingSettings)
+        public PostgresStreamStoreSettings(string connectionString, GapHandlingSettings gapHandlingSettings = null)
+            : this(gapHandlingSettings)
         {
             Ensure.That(connectionString, nameof(connectionString)).IsNotNullOrWhiteSpace();
+            DataSource = new NpgsqlDataSourceBuilder(connectionString)
+                .AddPostgresStreamStoreTypes()
+                .Build();
+            InternalManagedDataSource = true;
         }
 
         /// <summary>
         /// Initializes a new instance of <see cref="PostgresStreamStoreSettings"/>.
         /// </summary>
-        /// <param name="npgsqlDataSourceBuilder">The NpgsqlDataSourceBuilder.</param>
+        /// <param name="dataSource">DataSource for db connection. Make sure you AddPostgresStreamStoreTypes() when building the DataSource</param>
         /// <param name="gapHandlingSettings">Settings that are used for gap handling</param>
-        public PostgresStreamStoreSettings(
-            NpgsqlDataSourceBuilder npgsqlDataSourceBuilder,
+        public PostgresStreamStoreSettings(NpgsqlDataSource dataSource, GapHandlingSettings gapHandlingSettings = null)
+            : this(gapHandlingSettings)
+        {
+            Ensure.That(dataSource, nameof(dataSource)).IsNotNull();
+            DataSource = dataSource;
+        }
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="PostgresStreamStoreSettings"/>.
+        /// </summary>
+        /// <param name="gapHandlingSettings">Settings that are used for gap handling</param>
+        private PostgresStreamStoreSettings(
             GapHandlingSettings gapHandlingSettings = null)
         {
-            Ensure.That(npgsqlDataSourceBuilder, nameof(npgsqlDataSourceBuilder)).IsNotNull();
-
-            NpgsqlDataSourceBuilder = npgsqlDataSourceBuilder;
             GapHandlingSettings = gapHandlingSettings;
         }
 
         /// <summary>
-        ///     Allows overriding the way a <see cref="NpgsqlDataSource"/> is created by passing your own <see cref="NpgsqlDataSourceBuilder"/>.
-        ///     The default implementation simply passes the connection string into the <see cref="NpgsqlDataSourceBuilder"/> constructor.
+        /// DataSource for all connection
         /// </summary>
-        public NpgsqlDataSourceBuilder NpgsqlDataSourceBuilder { get; }
+        internal NpgsqlDataSource DataSource { get; }
+
+        /// <summary>
+        /// Represent information if the DataSource was external provided or not
+        /// </summary>
+        internal bool InternalManagedDataSource { get; }
 
         /// <summary>
         ///    Settings that are used for gap handling.

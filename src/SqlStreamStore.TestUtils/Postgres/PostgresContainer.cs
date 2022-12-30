@@ -12,7 +12,6 @@ namespace SqlStreamStore.TestUtils.Postgres
     {
         private readonly IContainerService _containerService;
         private const int Port = 5432;
-
         public override string ConnectionString => ConnectionStringBuilder.ConnectionString;
 
         public PostgresContainer(string databaseName)

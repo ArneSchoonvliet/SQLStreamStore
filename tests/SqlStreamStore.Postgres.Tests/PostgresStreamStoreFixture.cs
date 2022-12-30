@@ -10,8 +10,12 @@ namespace SqlStreamStore
     public class PostgresStreamStoreFixture : IStreamStoreFixture
     {
         private readonly Action _onDispose;
+        private readonly string _connectionString;
+        private readonly GapHandlingSettings _gapHandlingSettings;
+        private readonly string _schema;
         private bool _preparedPreviously;
-        private readonly PostgresStreamStoreSettings _settings;
+
+        private PostgresStreamStoreSettings _settings;
 
         public PostgresStreamStoreFixture(
             string schema,
@@ -21,17 +25,12 @@ namespace SqlStreamStore
             GapHandlingSettings gapHandlingSettings)
         {
             _onDispose = onDispose;
+            _gapHandlingSettings = gapHandlingSettings;
+            _schema = schema;
+            _connectionString = dockerInstance.ConnectionString;
 
             DatabaseName = databaseName;
-            var connectionString = dockerInstance.ConnectionString;
 
-            _settings = new PostgresStreamStoreSettings(connectionString, gapHandlingSettings)
-            {
-                Schema = schema,
-                GetUtcNow = () => GetUtcNow(),
-                DisableDeletionTracking = false,
-                ScavengeAsynchronously = false,
-            };
         }
 
         public void Dispose()
@@ -61,7 +60,13 @@ namespace SqlStreamStore
 
         public async Task Prepare()
         {
-            _settings.DisableDeletionTracking = false;
+            _settings = new PostgresStreamStoreSettings(_connectionString, _gapHandlingSettings)
+            {
+                Schema = _schema,
+                GetUtcNow = () => GetUtcNow(),
+                DisableDeletionTracking = false,
+                ScavengeAsynchronously = false,
+            };
             PostgresStreamStore = new PostgresStreamStore(_settings);
 
             await PostgresStreamStore.CreateSchemaIfNotExists();

@@ -1,7 +1,5 @@
 ﻿namespace SqlStreamStore.PgSqlScripts
 {
-    using System;
-
     internal class Schema
     {
         private readonly string _schema;
@@ -11,9 +9,7 @@
         public string Migration => _scripts.Migration;
         public string DropAll => _scripts.DropAll;
         public string EnableExplainAnalyze => _scripts.EnableExplainAnalyze;
-
-        public string NewStreamMessage => $"{_schema}.new_stream_message";
-
+        public string NewStreamMessage => $"{_schema}.{PostgresNewStreamMessage.DataTypeName}";
         public string AppendToStream => $"{_schema}.append_to_stream";
         public string Scavenge => $"{_schema}.scavenge";
         public string SetStreamMetadata => $"{_schema}.set_stream_metadata";

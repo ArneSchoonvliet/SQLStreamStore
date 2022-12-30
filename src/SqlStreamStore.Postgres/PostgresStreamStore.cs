@@ -17,8 +17,8 @@
     public partial class PostgresStreamStore : StreamStoreBase
     {
         private readonly PostgresStreamStoreSettings _settings;
-        private readonly NpgsqlDataSource _dataSource;
         private readonly Schema _schema;
+        private readonly NpgsqlDataSource _dataSource;
         private readonly Lazy<IStreamStoreNotifier> _streamStoreNotifier;
 
         public const int CurrentVersion = 3;
@@ -31,9 +31,7 @@
         {
             _settings = settings;
             _schema = new Schema(_settings.Schema);
-            _settings.NpgsqlDataSourceBuilder.MapComposite<PostgresNewStreamMessage>(_schema.NewStreamMessage);
-            _dataSource = _settings.NpgsqlDataSourceBuilder.Build();
-
+            _dataSource = _settings.DataSource;
             _streamStoreNotifier = new Lazy<IStreamStoreNotifier>(() =>
             {
                 if(_settings.CreateStreamStoreNotifier == null)
@@ -254,7 +252,23 @@
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            _dataSource.Dispose();
+            if (_settings.InternalManagedDataSource)
+                _dataSource.Dispose();
+        }
+    }
+
+    public static class PostgresStreamStoreExtensions
+    {
+        /// <summary>
+        /// Adds the required composite types to make PostgresStreamStore work
+        /// </summary>
+        /// <param name="builder"></param>
+        /// <returns></returns>
+        public static NpgsqlDataSourceBuilder AddPostgresStreamStoreTypes(this NpgsqlDataSourceBuilder builder)
+        {
+            // We can do this as long we don't have multiple StreamStores over multiple schemas in 1 db
+            builder.MapComposite<PostgresNewStreamMessage>(PostgresNewStreamMessage.DataTypeName);
+            return builder;
         }
     }
 }
