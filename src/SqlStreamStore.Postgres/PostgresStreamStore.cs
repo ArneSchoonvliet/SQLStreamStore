@@ -17,7 +17,7 @@
     public partial class PostgresStreamStore : StreamStoreBase
     {
         private readonly PostgresStreamStoreSettings _settings;
-        private NpgsqlDataSource _dataSource;
+        private readonly NpgsqlDataSource _dataSource;
         private readonly Schema _schema;
         private readonly Lazy<IStreamStoreNotifier> _streamStoreNotifier;
 
@@ -30,6 +30,10 @@
         public PostgresStreamStore(PostgresStreamStoreSettings settings) : base(settings.GetUtcNow, settings.LogName, settings.GapHandlingSettings)
         {
             _settings = settings;
+            _schema = new Schema(_settings.Schema);
+            _settings.NpgsqlDataSourceBuilder.MapComposite<PostgresNewStreamMessage>(_schema.NewStreamMessage);
+            _dataSource = _settings.NpgsqlDataSourceBuilder.Build();
+
             _streamStoreNotifier = new Lazy<IStreamStoreNotifier>(() =>
             {
                 if(_settings.CreateStreamStoreNotifier == null)
@@ -40,11 +44,6 @@
 
                 return settings.CreateStreamStoreNotifier.Invoke(this);
             });
-            _schema = new Schema(_settings.Schema);
-
-            var builder = _settings.NpgsqlDataSourceBuilder; 
-            builder.MapComposite<PostgresNewStreamMessage>(_schema.NewStreamMessage);
-            _dataSource = builder.Build();
         }
 
         internal async Task<NpgsqlConnection> OpenConnection(CancellationToken cancellationToken)
@@ -87,7 +86,6 @@
 
                     await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                 }
-
                 await connection.ReloadTypesAsync();
             }
         }

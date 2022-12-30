@@ -9,7 +9,6 @@
     public class PostgresStreamStoreDb : IDisposable
     {
         public string ConnectionString => _databaseManager.ConnectionString;
-
         private readonly string _schema;
         private readonly PostgresContainer _databaseManager;
 

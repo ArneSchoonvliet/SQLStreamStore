@@ -36,7 +36,7 @@
                 Output.WriteLine($"No support for {nameof(streamStore)} for this test.");
                 return;
             }
-            
+
             try
             {
                 var numberOfStreams = Input.ReadInt("Number of streams: ", 1, 100000000);
@@ -194,7 +194,7 @@
             }
         }
 
-        private static async Task AddTransaction(PostgresStreamStore streamStore, string schemaName, int delayCommitTime, string jsonData, int numberOfMessagesPerAmend, CancellationToken cancellationToken)
+        private static async Task AddTransaction(PostgresStreamStore pgStreamStore, string schemaName, int delayCommitTime, string jsonData, int numberOfMessagesPerAmend, CancellationToken cancellationToken)
         {
             try
             {
@@ -211,7 +211,7 @@
                     new NewStreamMessage(Guid.NewGuid(), "TestTransaction", "{}")
                 }.ToArray();
 
-                using (var connection = await streamStore.OpenConnection(cancellationToken))
+                using (var connection = await pgStreamStore.OpenConnection(cancellationToken))
                 using (var transaction = await connection.BeginTransactionAsync(cancellationToken))
                 using (var command = BuildFunctionCommand(
                           schema.AppendToStream,
