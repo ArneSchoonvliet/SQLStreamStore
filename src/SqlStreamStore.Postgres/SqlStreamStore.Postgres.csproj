@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Description>Postgre SQL provider for SQL StreamStore</Description>
     <AssemblyTitle>Stream Store - Postgres</AssemblyTitle>

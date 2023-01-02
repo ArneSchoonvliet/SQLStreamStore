@@ -256,19 +256,4 @@
                 _dataSource.Dispose();
         }
     }
-
-    public static class PostgresStreamStoreExtensions
-    {
-        /// <summary>
-        /// Adds the required composite types to make PostgresStreamStore work
-        /// </summary>
-        /// <param name="builder"></param>
-        /// <returns></returns>
-        public static NpgsqlDataSourceBuilder AddPostgresStreamStoreTypes(this NpgsqlDataSourceBuilder builder)
-        {
-            // We can do this as long we don't have multiple StreamStores over multiple schemas in 1 db
-            builder.MapComposite<PostgresNewStreamMessage>(PostgresNewStreamMessage.DataTypeName);
-            return builder;
-        }
-    }
 }

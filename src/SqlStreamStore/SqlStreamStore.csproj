@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Description>A library for writing and reading streams (also known as an 'event store') with a focus on SQL based implementations. This contains the core interfaces, abstractions and an in-memory implementation for tests.</Description>
     <AssemblyTitle>SQL Stream Store</AssemblyTitle>
