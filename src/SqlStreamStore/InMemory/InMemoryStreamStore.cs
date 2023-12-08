@@ -380,7 +380,7 @@ namespace SqlStreamStore
         }
 
         protected override Task<ReadAllPage> ReadAllBackwardsInternal(
-            long fromPositionExclusive,
+            long fromPositionInclusive,
             int maxCount,
             bool prefetch,
             ReadNextAllPage readNext,
@@ -390,9 +390,9 @@ namespace SqlStreamStore
 
             using (_lock.UseReadLock())
             {
-                if (fromPositionExclusive == Position.End)
+                if (fromPositionInclusive == Position.End)
                 {
-                    fromPositionExclusive = _allStream.Last.Value.Position;
+                    fromPositionInclusive = _allStream.Last.Value.Position;
                 }
 
                 // Find the node to start from (it may not be equal to the exact position)
@@ -404,11 +404,11 @@ namespace SqlStreamStore
                 }
 
                 var previous = current.Previous;
-                while(current.Value.Position < fromPositionExclusive)
+                while(current.Value.Position < fromPositionInclusive)
                 {
                     if(current.Next == null) // fromPosition is past end of store
                     {
-                        var result = new ReadAllPage(fromPositionExclusive, fromPositionExclusive, true,
+                        var result = new ReadAllPage(fromPositionInclusive, fromPositionInclusive, true,
                                 ReadDirection.Backward, readNext);
                         return Task.FromResult(result);
                     }
@@ -469,10 +469,10 @@ namespace SqlStreamStore
                     ? 0
                     : current.Value.Position;
 
-                fromPositionExclusive = messages.Any() ? messages[0].Position : 0;
+                fromPositionInclusive = messages.Any() ? messages[0].Position : 0;
 
                 var page = new ReadAllPage(
-                    fromPositionExclusive,
+                    fromPositionInclusive,
                     nextPosition,
                     isEnd,
                     ReadDirection.Backward,

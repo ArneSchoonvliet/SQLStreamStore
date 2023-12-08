@@ -84,7 +84,9 @@
             {
                 Logger.TraceFormat("Correlation: {correlation} | {messages} | Xmin: {xMin}",
                     correlation,
-                    hasMessages ? $"Count: {messages.Count} | {string.Join(" | ", messages.Select((x, i) => $"Position: {x.Position}, Array index: {i}, Transaction id: {x.TransactionId}"))}" : "No messages",
+                    hasMessages
+                        ? $"Count: {messages.Count} | {string.Join(" | ", messages.Select((x, i) => $"Position: {x.Position}, Array index: {i}, Transaction id: {x.TransactionId}"))}"
+                        : "No messages",
                     xMin);
             }
 
@@ -303,7 +305,7 @@
                             0,
                             xMin,
                             true);
-                        
+
                         return (new List<StreamMessage>().AsReadOnly(), new ReadOnlyDictionary<string, int>(new Dictionary<string, int>()), xMin, true);
                     }
 
@@ -338,16 +340,16 @@
                         messages.Count,
                         xMin,
                         isEnd);
-                    
+
                     return (messages.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), xMin, isEnd);
                 }
             }
         }
 
-        protected override async Task<ReadAllPage> ReadAllBackwardsInternal(long fromPositionExclusive, int maxCount, bool prefetch, ReadNextAllPage readNext, CancellationToken cancellationToken)
+        protected override async Task<ReadAllPage> ReadAllBackwardsInternal(long fromPositionInclusive, int maxCount, bool prefetch, ReadNextAllPage readNext, CancellationToken cancellationToken)
         {
             maxCount = maxCount == int.MaxValue ? maxCount - 1 : maxCount;
-            var ordinal = fromPositionExclusive == Position.End ? long.MaxValue : fromPositionExclusive;
+            var ordinal = fromPositionInclusive == Position.End ? long.MaxValue : fromPositionInclusive;
 
             var refcursorSql = new StringBuilder();
 
@@ -364,7 +366,14 @@
                 {
                     while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                     {
-                        refcursorSql.AppendLine(Schema.FetchAll(reader.GetString(0)));
+                        var result = reader.GetString(0);
+
+                        // ReadBackwards doesn't need to retrieve tx_info since currently not supported to check for gaps
+                        // TODO Maybe consider adding it since gaps can also be a problem in this case
+                        if(result == "tx_info")
+                            continue;
+                        
+                        refcursorSql.AppendLine(Schema.FetchAll(result));
                     }
                 }
 
@@ -412,9 +421,9 @@
 
                     var filteredMessages = FilterExpired(messages.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict));
 
-                    fromPositionExclusive = filteredMessages.Count > 0 ? filteredMessages[0].Position : 0;
+                    fromPositionInclusive = filteredMessages.Count > 0 ? filteredMessages[0].Position : 0;
 
-                    return new ReadAllPage(fromPositionExclusive, nextPosition, isEnd, ReadDirection.Backward, readNext, filteredMessages.ToArray());
+                    return new ReadAllPage(fromPositionInclusive, nextPosition, isEnd, ReadDirection.Backward, readNext, filteredMessages.ToArray());
                 }
             }
         }

@@ -316,7 +316,7 @@ namespace SqlStreamStore.Infrastructure
             CancellationToken cancellationToken);
 
         protected abstract Task<ReadAllPage> ReadAllBackwardsInternal(
-            long fromPositionExclusive,
+            long fromPositionInclusive,
             int maxCount,
             bool prefetch,
             ReadNextAllPage readNext,
