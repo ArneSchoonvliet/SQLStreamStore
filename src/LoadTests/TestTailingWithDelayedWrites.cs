@@ -16,7 +16,7 @@
     using SqlStreamStore.PgSqlScripts;
     using SqlStreamStore.Streams;
 
-    public class TestTailing : LoadTest
+    public class TestTailingWithDelayedWrites : LoadTest
     {
         private static readonly object s_lock = new object();
         private static readonly List<long> s_db = new List<long>();

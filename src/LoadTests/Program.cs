@@ -12,6 +12,7 @@
         static async Task Main(string[] args)
         {
             Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Verbose()
                 .WriteTo
                 .File("LoadTests.txt")
                 .CreateLogger();
@@ -43,8 +44,11 @@
                     "Test gaps",
                     async ct => await new TestGaps().Run(ct))
                 .Add(
-                    "Test tailing",
-                    async ct => await new TestTailing().Run(ct))
+                    "Test tailing (Concurrent Writes)",
+                    async ct => await new TestTailingWithConcurrentWrites().Run(ct))
+                .Add(
+                    "Test tailing (Delayed Writes)",
+                    async ct => await new TestTailingWithDelayedWrites().Run(ct))
                 .Add(
                     "Append Read Deadlocks",
                     async ct => await new AppendsReadsDeadlocks().Run(ct))

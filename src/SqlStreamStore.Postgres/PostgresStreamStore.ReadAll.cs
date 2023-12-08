@@ -31,6 +31,27 @@
 
                 isEnd = r.isEnd;
                 messages = r.messages;
+
+                // TODO Change to Tracing before 'REAL RELEASE'
+                if(Logger.IsWarnEnabled() && messages.Any())
+                {
+                    // Check for gap between last page and this. 
+                    if(messages[0].Position != fromPositionInclusive)
+                    {
+                        Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {fromPosition}", correlation, fromPositionInclusive);
+                    }
+
+                    for(int i = 0; i < messages.Count - 1; i++)
+                    {
+                        var expectedNextPosition = messages[i].Position + 1;
+                        var actualPosition = messages[i + 1].Position;
+
+                        if(expectedNextPosition != actualPosition)
+                        {
+                            Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {actualPosition}", correlation, actualPosition);
+                        }
+                    }
+                }
             }
 
             if(!messages.Any())
@@ -61,9 +82,9 @@
             // When we retrieve high amount of messages this will impact the performance.
             if(Logger.IsTraceEnabled())
             {
-                Logger.TraceFormat($"Correlation: {correlation} | {messages} | Xmin: {xMin}",
+                Logger.TraceFormat("Correlation: {correlation} | {messages} | Xmin: {xMin}",
                     correlation,
-                    hasMessages ? $"Count: {messages.Count} | {string.Join("|", messages.Select((x, i) => $"Position: {x.Position} Array index: {i}"))}" : "No messages",
+                    hasMessages ? $"Count: {messages.Count} | {string.Join(" | ", messages.Select((x, i) => $"Position: {x.Position}, Array index: {i}, Transaction id: {x.TransactionId}"))}" : "No messages",
                     xMin);
             }
 
@@ -97,7 +118,7 @@
                 await PollXmin(maxTransactionId, correlation, cancellationToken).ConfigureAwait(false);
                 return await ReadTrustedMessages(fromPositionInclusive, messages[messages.Count - 1].Position, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
             }
-            
+
             for(int i = 0; i < messages.Count - 1; i++)
             {
                 var expectedNextPosition = messages[i].Position + 1;
@@ -141,6 +162,7 @@
                     totalTime += sw.ElapsedMilliseconds;
                     sw.Restart();
                 }
+
                 if(count % 5 == 0)
                     delayTime += 10;
 
@@ -160,7 +182,7 @@
                         maximumTransactionId);
                     return;
                 }
-                
+
                 // We are still in the 'Danger zone', in flight transactions are not done yet. BUT we have reached our limit time we wait for it...
                 // In this case we are rather sure we have a skipped event.
                 if(totalTime >= _settings.GapHandlingSettings.SkipTime)
@@ -174,16 +196,17 @@
                         maximumTransactionId);
                     return;
                 }
-                
+
                 // We are still in the 'Danger zone', in flight transactions are not done yet. We still have a chance on a 'skipped event'
-                Logger.TraceFormat("Correlation: {correlation} | Transactions still pending (Iteration: {count}). Query 'ReadXmin' took: {timeTaken}ms | Total Polling time: {totalTime}ms, xMin: {xMin}, maximumTransactionId: {transactionId}",
+                Logger.TraceFormat(
+                    "Correlation: {correlation} | Transactions still pending (Iteration: {count}). Query 'ReadXmin' took: {timeTaken}ms | Total Polling time: {totalTime}ms, xMin: {xMin}, maximumTransactionId: {transactionId}",
                     correlation,
                     count + 1,
                     sw.ElapsedMilliseconds,
                     totalTime,
                     xMin,
                     maximumTransactionId);
-                
+
                 // Log some warnings since it's starting to take a while...
                 if(totalTime >= _settings.GapHandlingSettings.MinimumWarnTime)
                 {
@@ -195,7 +218,7 @@
                         xMin,
                         maximumTransactionId);
                 }
-                
+
                 count++;
             }
         }
@@ -218,27 +241,6 @@
                 isEnd = false;
 
             Logger.TraceFormat("Correlation: {correlation} | IsEnd: {isEnd} | FilteredCount: {filteredCount} | TotalCount: {totalCount}", correlation, isEnd, messageToReturn.Count, messages.Count);
-
-            // TODO Change to Tracing before 'REAL RELEASE'
-            if(Logger.IsWarnEnabled())
-            {
-                // Check for gap between last page and this. 
-                if(messageToReturn[0].Position != fromPositionInclusive)
-                {
-                    Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {fromPosition}", correlation, fromPositionInclusive);
-                }
-
-                for(int i = 0; i < messages.Count - 1; i++)
-                {
-                    var expectedNextPosition = messages[i].Position + 1;
-                    var actualPosition = messages[i + 1].Position;
-
-                    if(expectedNextPosition != actualPosition)
-                    {
-                        Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {actualPosition}", correlation, actualPosition);
-                    }
-                }
-            }
 
             return (messageToReturn.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), isEnd);
         }
@@ -291,6 +293,17 @@
 
                     if(!reader.HasRows)
                     {
+                        Logger.TraceFormat(
+                            "Correlation: {correlation} | Query 'ReadAllForwards' took: {timeTaken}ms | fromPositionInclusive: {fromPositionInclusive}, maxCount: {maxCount}, prefetch: {preFetch} | count: {messageCount}, xMin: {xMin}, isEnd: {isEnd}",
+                            correlation,
+                            sw.ElapsedMilliseconds,
+                            fromPositionInclusive,
+                            maxCount,
+                            prefetch,
+                            0,
+                            xMin,
+                            true);
+                        
                         return (new List<StreamMessage>().AsReadOnly(), new ReadOnlyDictionary<string, int>(new Dictionary<string, int>()), xMin, true);
                     }
 
@@ -315,7 +328,17 @@
                         }
                     }
 
-                    Logger.TraceFormat("Correlation: {correlation} | Query 'ReadAllForwards' took: {timeTaken}ms", correlation, sw.ElapsedMilliseconds);
+                    Logger.TraceFormat(
+                        "Correlation: {correlation} | Query 'ReadAllForwards' took: {timeTaken}ms | fromPositionInclusive: {fromPositionInclusive}, maxCount: {maxCount}, prefetch: {preFetch} | count: {messageCount}, xMin: {xMin}, isEnd: {isEnd}",
+                        correlation,
+                        sw.ElapsedMilliseconds,
+                        fromPositionInclusive,
+                        maxCount,
+                        prefetch,
+                        messages.Count,
+                        xMin,
+                        isEnd);
+                    
                     return (messages.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), xMin, isEnd);
                 }
             }

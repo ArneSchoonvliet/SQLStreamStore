@@ -28,7 +28,7 @@
                         var newGapHandlingEnabled = await Input.ReadEnum<YesNo>("Use new gap handling: ", ct) == YesNo.Yes;
                         
                         await fixture.Start();
-                        streamStore = await fixture.GetPostgresStreamStore(newGapHandlingEnabled ? new GapHandlingSettings(6000, 12000) : null);
+                        streamStore = await fixture.GetPostgresStreamStore(newGapHandlingEnabled ? new GapHandlingSettings(5000, 20000) : null);
                         disposable = fixture;
                         connectionString = fixture.ConnectionString;
                     })
@@ -42,7 +42,7 @@
                         
                         var newGapHandlingEnabled = await Input.ReadEnum<YesNo>("Use new gap handling: ", ct) == YesNo.Yes;
                         
-                        streamStore = await postgresStreamStoreDb.GetPostgresStreamStore(newGapHandlingEnabled ? new GapHandlingSettings(6000, 12000) : null);
+                        streamStore = await postgresStreamStoreDb.GetPostgresStreamStore(newGapHandlingEnabled ? new GapHandlingSettings(5000, 20000) : null);
                         disposable = postgresStreamStoreDb;
                     })
                 .Display(cancellationToken);
@@ -52,7 +52,7 @@
                 () =>
                 {
                     streamStore.Dispose();
-                    disposable?.Dispose();
+                    // disposable?.Dispose();
                 });
         }
         
