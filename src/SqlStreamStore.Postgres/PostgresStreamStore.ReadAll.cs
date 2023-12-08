@@ -17,33 +17,31 @@
 
     partial class PostgresStreamStore
     {
-        protected override async Task<ReadAllPage> ReadAllForwardsInternal(long fromPositionExclusive, int maxCount, bool prefetch, ReadNextAllPage readNext, CancellationToken cancellationToken)
+        protected override async Task<ReadAllPage> ReadAllForwardsInternal(long fromPositionInclusive, int maxCount, bool prefetch, ReadNextAllPage readNext, CancellationToken cancellationToken)
         {
             var correlation = Guid.NewGuid();
 
             maxCount = maxCount == int.MaxValue ? maxCount - 1 : maxCount;
 
-            var (messages, maxAgeDict, xMin, isEnd) = await ReadAllForwards(fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
+            var (messages, maxAgeDict, xMin, isEnd) = await ReadAllForwards(fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
 
             if(_settings.GapHandlingSettings != null)
             {
-                var r = await HandleGaps(messages, maxAgeDict, xMin, isEnd, fromPositionExclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
+                var r = await HandleGaps(messages, maxAgeDict, xMin, isEnd, fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
 
                 isEnd = r.isEnd;
                 messages = r.messages;
-                
-                // TODO Check if there any gaps and log if so...
             }
 
             if(!messages.Any())
             {
-                return new ReadAllPage(fromPositionExclusive, fromPositionExclusive, isEnd, ReadDirection.Forward, readNext, Array.Empty<StreamMessage>());
+                return new ReadAllPage(fromPositionInclusive, fromPositionInclusive, isEnd, ReadDirection.Forward, readNext, Array.Empty<StreamMessage>());
             }
 
             var filteredMessages = FilterExpired(messages, maxAgeDict);
             var nextPosition = filteredMessages[filteredMessages.Count - 1].Position + 1;
 
-            return new ReadAllPage(fromPositionExclusive, nextPosition, isEnd, ReadDirection.Forward, readNext, filteredMessages.ToArray());
+            return new ReadAllPage(fromPositionInclusive, nextPosition, isEnd, ReadDirection.Forward, readNext, filteredMessages.ToArray());
         }
 
         private async Task<(ReadOnlyCollection<StreamMessage> messages, ReadOnlyDictionary<string, int> maxAgeDict, bool isEnd)> HandleGaps(
@@ -99,8 +97,7 @@
                 await PollXmin(maxTransactionId, correlation, cancellationToken).ConfigureAwait(false);
                 return await ReadTrustedMessages(fromPositionInclusive, messages[messages.Count - 1].Position, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
             }
-
-
+            
             for(int i = 0; i < messages.Count - 1; i++)
             {
                 var expectedNextPosition = messages[i].Position + 1;
@@ -124,115 +121,83 @@
 
         private async Task PollXmin(ulong maximumTransactionId, Guid correlation, CancellationToken cancellationToken)
         {
-            Logger.TraceFormat("Correlation: {correlation} | Gaps might be filled, start comparing", correlation);
+            Logger.TraceFormat("Correlation: {correlation} | Gaps might be filled, start polling 'Xmin', needs to reach at least {transactionId}", correlation, maximumTransactionId);
 
-            bool stillInProgress;
             var count = 0;
             var delayTime = 0;
             var totalTime = 0L;
 
-            var sw = Stopwatch.StartNew();
-            do
-            {
-                if(totalTime > _settings.GapHandlingSettings.MinimumWarnTime)
-                {
-                    Logger.ErrorFormat(
-                        "Correlation: {correlation} | Possible DEADLOCK! One of the transactions is in progress for longer than {totalTime}ms",
-                        correlation,
-                        _settings.GapHandlingSettings.MinimumWarnTime);
-                }
+            var sw = new Stopwatch();
 
-                if(totalTime > _settings.GapHandlingSettings.SkipTime)
-                {
-                    Logger.ErrorFormat(
-                        "Correlation: {correlation} | Possible SKIPPED EVENT as we will stop waiting for in progress transactions! One of the transactions is in progress for longer than {totalTime}ms",
-                        correlation,
-                        _settings.GapHandlingSettings.SkipTime);
-                    return;
-                }
+            while(true)
+            {
+                sw.Restart();
 
                 if(delayTime > 0)
                 {
                     Logger.TraceFormat("Correlation: {correlation} | Delay 'PollXmin' for {delayTime}ms", correlation, delayTime);
                     await Task.Delay(delayTime, cancellationToken).ConfigureAwait(false);
-                }
 
+                    totalTime += sw.ElapsedMilliseconds;
+                    sw.Restart();
+                }
                 if(count % 5 == 0)
                     delayTime += 10;
 
                 var xMin = await ReadXmin(cancellationToken).ConfigureAwait(false);
-                stillInProgress = maximumTransactionId >= xMin;
-
-                if(stillInProgress)
-                    Logger.TraceFormat("Correlation: {correlation} | Transactions still pending (xMin = {xMin}). Query 'ReadXmin' took: {timeTaken}ms", correlation, xMin, sw.ElapsedMilliseconds);
+                var stillInProgress = maximumTransactionId >= xMin;
 
                 totalTime += sw.ElapsedMilliseconds;
-                count++;
-                sw.Restart();
 
-                Logger.TraceFormat("Correlation: {correlation} | State 'PollXmin' | count: {count} | delayTime: {delayTime} | totalTime: {totalTime}",
-                    correlation,
-                    count,
-                    delayTime,
-                    totalTime);
-            } while(stillInProgress);
-        }
-
-        private async Task PollTransactions(Guid correlation, TxIdList transactionsInProgress, CancellationToken cancellationToken)
-        {
-            Logger.TraceFormat("Correlation: {correlation} | Transactions in progress: {transactions} | Gaps might be filled, start comparing", correlation, transactionsInProgress);
-
-            bool stillInProgress;
-            var count = 0;
-            var delayTime = 0;
-            var totalTime = 0L;
-
-            var sw = Stopwatch.StartNew();
-            do
-            {
-                if(totalTime > _settings.GapHandlingSettings.MinimumWarnTime)
+                // All should be fine, if we now re-query the same page it should only contain 'real gaps'
+                if(!stillInProgress)
                 {
-                    Logger.ErrorFormat(
-                        "Correlation: {correlation} | Transactions in progress: {transactions} | Possible DEADLOCK! One of the transactions is in progress for longer than {totalTime}ms",
+                    Logger.TraceFormat(
+                        "Correlation: {correlation} | Transactions not pending anymore | Total Polling time: {totalTime}ms, xMin: {xMin}, maximumTransactionId: {transactionId}",
                         correlation,
-                        transactionsInProgress,
-                        _settings.GapHandlingSettings.MinimumWarnTime);
-                }
-
-                if(totalTime > _settings.GapHandlingSettings.SkipTime)
-                {
-                    Logger.ErrorFormat(
-                        "Correlation: {correlation} | Transactions in progress: {transactions} | Possible SKIPPED EVENT as we will stop waiting for in progress transactions! One of the transactions is in progress for longer than {totalTime}ms",
-                        correlation,
-                        transactionsInProgress,
-                        _settings.GapHandlingSettings.SkipTime);
+                        totalTime,
+                        xMin,
+                        maximumTransactionId);
                     return;
                 }
-
-                if(delayTime > 0)
+                
+                // We are still in the 'Danger zone', in flight transactions are not done yet. BUT we have reached our limit time we wait for it...
+                // In this case we are rather sure we have a skipped event.
+                if(totalTime >= _settings.GapHandlingSettings.SkipTime)
                 {
-                    Logger.TraceFormat("Correlation: {correlation} | Delay 'PollTransactions' for {delayTime}ms", correlation, delayTime);
-                    await Task.Delay(delayTime, cancellationToken).ConfigureAwait(false);
+                    Logger.ErrorFormat(
+                        "Correlation: {correlation} | Possible SKIPPED EVENT as we will stop waiting for in progress transactions! One of the transactions is in progress for to long (>= {skipTime}) | Total Polling time: {totalTime}ms, xMin: {xMin}, maximumTransactionId: {transactionId}",
+                        correlation,
+                        _settings.GapHandlingSettings.SkipTime,
+                        totalTime,
+                        xMin,
+                        maximumTransactionId);
+                    return;
                 }
-
-                if(count % 5 == 0)
-                    delayTime += 10;
-
-                stillInProgress = await ReadAnyTransactionsInProgress(transactionsInProgress, cancellationToken).ConfigureAwait(false);
-
-                if(stillInProgress)
-                    Logger.TraceFormat("Correlation: {correlation} | Transactions still pending. Query 'ReadAnyTransactionsInProgress' took: {timeTaken}ms", correlation, sw.ElapsedMilliseconds);
-
-                totalTime += sw.ElapsedMilliseconds;
-                count++;
-                sw.Restart();
-
-                Logger.TraceFormat("Correlation: {correlation} | State 'PollTransactions' | count: {count} | delayTime: {delayTime} | totalTime: {totalTime}",
+                
+                // We are still in the 'Danger zone', in flight transactions are not done yet. We still have a chance on a 'skipped event'
+                Logger.TraceFormat("Correlation: {correlation} | Transactions still pending (Iteration: {count}). Query 'ReadXmin' took: {timeTaken}ms | Total Polling time: {totalTime}ms, xMin: {xMin}, maximumTransactionId: {transactionId}",
                     correlation,
-                    count,
-                    delayTime,
-                    totalTime);
-            } while(stillInProgress);
+                    count + 1,
+                    sw.ElapsedMilliseconds,
+                    totalTime,
+                    xMin,
+                    maximumTransactionId);
+                
+                // Log some warnings since it's starting to take a while...
+                if(totalTime >= _settings.GapHandlingSettings.MinimumWarnTime)
+                {
+                    Logger.WarnFormat(
+                        "Correlation: {correlation} | Possible DEADLOCK! One of the transactions is taking some time (>= {warnTime}) | Total Polling time: {totalTime}ms, xMin: {xMin}, maximumTransactionId: {transactionId}",
+                        correlation,
+                        _settings.GapHandlingSettings.MinimumWarnTime,
+                        totalTime,
+                        xMin,
+                        maximumTransactionId);
+                }
+                
+                count++;
+            }
         }
 
         private async Task<(ReadOnlyCollection<StreamMessage>, ReadOnlyDictionary<string, int>, bool)> ReadTrustedMessages(
@@ -253,19 +218,29 @@
                 isEnd = false;
 
             Logger.TraceFormat("Correlation: {correlation} | IsEnd: {isEnd} | FilteredCount: {filteredCount} | TotalCount: {totalCount}", correlation, isEnd, messageToReturn.Count, messages.Count);
-            return (messageToReturn.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), isEnd);
-        }
 
-        private async Task<bool> ReadAnyTransactionsInProgress(TxIdList transactionIds, CancellationToken cancellationToken)
-        {
-            using(var connection = await OpenConnection(cancellationToken).ConfigureAwait(false))
-            using(var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
-            using(var command = BuildFunctionCommand(_schema.ReadAnyTransactionsInProgress, transaction, Parameters.Name(connection.Database), Parameters.TransactionIds(transactionIds)))
+            // TODO Change to Tracing before 'REAL RELEASE'
+            if(Logger.IsWarnEnabled())
             {
-                var result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as bool?;
+                // Check for gap between last page and this. 
+                if(messageToReturn[0].Position != fromPositionInclusive)
+                {
+                    Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {fromPosition}", correlation, fromPositionInclusive);
+                }
 
-                return result ?? false;
+                for(int i = 0; i < messages.Count - 1; i++)
+                {
+                    var expectedNextPosition = messages[i].Position + 1;
+                    var actualPosition = messages[i + 1].Position;
+
+                    if(expectedNextPosition != actualPosition)
+                    {
+                        Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {actualPosition}", correlation, actualPosition);
+                    }
+                }
             }
+
+            return (messageToReturn.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), isEnd);
         }
 
         private async Task<ulong> ReadXmin(CancellationToken cancellationToken)
@@ -278,9 +253,9 @@
                 return result ?? 0;
             }
         }
-        
+
         private async Task<(ReadOnlyCollection<StreamMessage> messages, ReadOnlyDictionary<string, int> maxAgeDict, ulong xMin, bool isEnd)> ReadAllForwards(
-            long fromPositionExclusive,
+            long fromPositionInclusive,
             int maxCount,
             bool prefetch,
             Guid correlation,
@@ -296,7 +271,7 @@
                 using(var command = BuildFunctionCommand(_schema.ReadAll,
                           transaction,
                           Parameters.Count(maxCount + 1),
-                          Parameters.Position(fromPositionExclusive),
+                          Parameters.Position(fromPositionInclusive),
                           Parameters.ReadDirection(ReadDirection.Forward),
                           Parameters.Prefetch(prefetch)))
                 using(var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false))
@@ -334,19 +309,13 @@
                             var (message, maxAge, _) = await ReadAllStreamMessage(reader, streamIdInfo.PostgresqlStreamId, prefetch).ConfigureAwait(false);
 
                             if(maxAge.HasValue)
-                            {
-                                if(!maxAgeDict.ContainsKey(message.StreamId))
-                                {
-                                    maxAgeDict.Add(message.StreamId, maxAge.Value);
-                                }
-                            }
+                                maxAgeDict.TryAdd(message.StreamId, maxAge.Value);
 
                             messages.Add(message);
                         }
                     }
 
                     Logger.TraceFormat("Correlation: {correlation} | Query 'ReadAllForwards' took: {timeTaken}ms", correlation, sw.ElapsedMilliseconds);
-
                     return (messages.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), xMin, isEnd);
                 }
             }

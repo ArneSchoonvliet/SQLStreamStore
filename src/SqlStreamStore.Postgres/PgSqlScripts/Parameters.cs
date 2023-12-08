@@ -135,15 +135,6 @@
             };
         }
 
-        public static NpgsqlParameter TransactionIds(TxIdList value)
-        {
-            return new NpgsqlParameter<ulong[]>
-            {
-                NpgsqlDbType = NpgsqlDbType.Xid8 | NpgsqlDbType.Array,
-                NpgsqlValue = value.ToArray()
-            };
-        }
-
         public static NpgsqlParameter Name(string value)
         {
             return new NpgsqlParameter<string>
@@ -231,20 +222,6 @@
                 NpgsqlDbType = NpgsqlDbType.Integer,
                 TypedValue = value
             };
-        }
-
-        public static NpgsqlParameter OptionalStartingAt(int? value)
-        {
-            return value.HasValue
-                ? (NpgsqlParameter) new NpgsqlParameter<int>
-                {
-                    NpgsqlDbType = NpgsqlDbType.Integer,
-                    TypedValue = value.Value
-                }
-                : new NpgsqlParameter<DBNull>
-                {
-                    TypedValue = DBNull.Value
-                };
         }
 
         public static NpgsqlParameter OptionalAfterIdInternal(int? value)

@@ -9,7 +9,6 @@
         public string Migration => _scripts.Migration;
         public string DropAll => _scripts.DropAll;
         public string EnableExplainAnalyze => _scripts.EnableExplainAnalyze;
-        public string NewStreamMessage => $"{_schema}.{PostgresNewStreamMessage.DataTypeName}";
         public string AppendToStream => $"{_schema}.append_to_stream";
         public string Scavenge => $"{_schema}.scavenge";
         public string SetStreamMetadata => $"{_schema}.set_stream_metadata";
@@ -23,11 +22,9 @@
         public string ReadAllHeadPosition => $"{_schema}.read_head_position";
         public string ReadStreamHeadPosition => $"{_schema}.read_stream_head_position";
         public string ReadStreamHeadVersion => $"{_schema}.read_stream_head_version";
-        public string ReadAnyTransactionsInProgress => $"{_schema}.read_any_transactions_in_progress";
         public string ReadXmin => $"{_schema}.read_xmin";
         public string ReadJsonData => $"{_schema}.read_json_data";
         public string ReadSchemaVersion => $"{_schema}.read_schema_version";
-        public string ReadStreamMessageBeforeCreatedCount => $"{_schema}.read_stream_message_before_created_count";
 
         public static string FetchAll(string refcursor) => $@"FETCH ALL IN ""{refcursor}"";";
 
