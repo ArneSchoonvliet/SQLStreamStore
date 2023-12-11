@@ -23,11 +23,11 @@
 
             maxCount = maxCount == int.MaxValue ? maxCount - 1 : maxCount;
 
-            var (messages, maxAgeDict, xMin, isEnd) = await ReadAllForwards(fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
+            var (messages, maxAgeDict, transactionIdDict, xMin, isEnd) = await ReadAllForwards(fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
 
             if(_settings.GapHandlingSettings != null)
             {
-                var r = await HandleGaps(messages, maxAgeDict, xMin, isEnd, fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
+                var r = await HandleGaps(messages, maxAgeDict, transactionIdDict, xMin, isEnd, fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
 
                 isEnd = r.isEnd;
                 messages = r.messages;
@@ -68,6 +68,7 @@
         private async Task<(ReadOnlyCollection<StreamMessage> messages, ReadOnlyDictionary<string, int> maxAgeDict, bool isEnd)> HandleGaps(
             ReadOnlyCollection<StreamMessage> messages,
             ReadOnlyDictionary<string, int> maxAgeDict,
+            ReadOnlyDictionary<long, ulong> transactionIdDict,
             ulong xMin,
             bool isEnd,
             long fromPositionInclusive,
@@ -85,7 +86,7 @@
                 Logger.TraceFormat("Correlation: {correlation} | {messages} | Xmin: {xMin}",
                     correlation,
                     hasMessages
-                        ? $"Count: {messages.Count} | {string.Join(" | ", messages.Select((x, i) => $"Position: {x.Position}, Array index: {i}, Transaction id: {x.TransactionId}"))}"
+                        ? $"Count: {messages.Count} | {string.Join(" | ", messages.Select((x, i) => $"Position: {x.Position}, Array index: {i}, Transaction id: {transactionIdDict[x.Position]}"))}"
                         : "No messages",
                     xMin);
             }
@@ -96,7 +97,7 @@
                 return (new ReadOnlyCollection<StreamMessage>(new List<StreamMessage>()), new ReadOnlyDictionary<string, int>(new Dictionary<string, int>()), true);
             }
 
-            var maxTransactionId = messages.Select(x => x.TransactionId).Max();
+            var maxTransactionId = transactionIdDict.Select(x => x.Value).Max();
             if(maxTransactionId < xMin)
             {
                 Logger.TraceFormat("Correlation: {correlation} | All messages have a transaction id lower than xMin {xMin}, no need for gap checking", correlation, xMin);
@@ -234,7 +235,7 @@
             CancellationToken cancellationToken)
         {
             Logger.TraceFormat("Correlation: {correlation} | Read trusted message initiated", correlation);
-            var (messages, maxAgeDict, _, isEnd) = await ReadAllForwards(fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
+            var (messages, maxAgeDict, _, _, isEnd) = await ReadAllForwards(fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
 
             Logger.TraceFormat("Correlation: {correlation} | Filter messages from {fromPositionInclusive} to {toPositionInclusive}", correlation, fromPositionInclusive, toPositionInclusive);
             var messageToReturn = messages.Where(x => x.Position >= fromPositionInclusive && x.Position <= toPositionInclusive).ToList();
@@ -243,7 +244,6 @@
                 isEnd = false;
 
             Logger.TraceFormat("Correlation: {correlation} | IsEnd: {isEnd} | FilteredCount: {filteredCount} | TotalCount: {totalCount}", correlation, isEnd, messageToReturn.Count, messages.Count);
-
             return (messageToReturn.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), isEnd);
         }
 
@@ -258,12 +258,13 @@
             }
         }
 
-        private async Task<(ReadOnlyCollection<StreamMessage> messages, ReadOnlyDictionary<string, int> maxAgeDict, ulong xMin, bool isEnd)> ReadAllForwards(
-            long fromPositionInclusive,
-            int maxCount,
-            bool prefetch,
-            Guid correlation,
-            CancellationToken cancellationToken)
+        private async Task<(ReadOnlyCollection<StreamMessage> messages, ReadOnlyDictionary<string, int> maxAgeDict, ReadOnlyDictionary<long, ulong> transactionIdDict, ulong xMin, bool isEnd)>
+            ReadAllForwards(
+                long fromPositionInclusive,
+                int maxCount,
+                bool prefetch,
+                Guid correlation,
+                CancellationToken cancellationToken)
         {
             var sw = Stopwatch.StartNew();
 
@@ -306,13 +307,17 @@
                             xMin,
                             true);
 
-                        return (new List<StreamMessage>().AsReadOnly(), new ReadOnlyDictionary<string, int>(new Dictionary<string, int>()), xMin, true);
+                        return (new List<StreamMessage>().AsReadOnly(),
+                            new ReadOnlyDictionary<string, int>(new Dictionary<string, int>()),
+                            new ReadOnlyDictionary<long, ulong>(new Dictionary<long, ulong>()),
+                            xMin,
+                            true);
                     }
 
                     var messages = new List<StreamMessage>();
                     var maxAgeDict = new Dictionary<string, int>();
+                    var transactionIdDict = new Dictionary<long, ulong>();
                     var isEnd = true;
-
 
                     while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                     {
@@ -321,7 +326,9 @@
                         else
                         {
                             var streamIdInfo = new StreamIdInfo(reader.GetString(0));
-                            var (message, maxAge, _) = await ReadAllStreamMessage(reader, streamIdInfo.PostgresqlStreamId, prefetch).ConfigureAwait(false);
+                            var (message, maxAge, transactionId) = await ReadAllStreamMessage(reader, streamIdInfo.PostgresqlStreamId, prefetch).ConfigureAwait(false);
+
+                            transactionIdDict.Add(message.Position, transactionId);
 
                             if(maxAge.HasValue)
                                 maxAgeDict.TryAdd(message.StreamId, maxAge.Value);
@@ -341,7 +348,7 @@
                         xMin,
                         isEnd);
 
-                    return (messages.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), xMin, isEnd);
+                    return (messages.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), new ReadOnlyDictionary<long, ulong>(transactionIdDict), xMin, isEnd);
                 }
             }
         }
@@ -372,7 +379,7 @@
                         // TODO Maybe consider adding it since gaps can also be a problem in this case
                         if(result == "tx_info")
                             continue;
-                        
+
                         refcursorSql.AppendLine(Schema.FetchAll(result));
                     }
                 }
@@ -395,7 +402,7 @@
                     while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                     {
                         var streamIdInfo = new StreamIdInfo(reader.GetString(0));
-                        var (message, maxAge, position) = await ReadAllStreamMessage(reader, streamIdInfo.PostgresqlStreamId, prefetch).ConfigureAwait(false);
+                        var (message, maxAge, _) = await ReadAllStreamMessage(reader, streamIdInfo.PostgresqlStreamId, prefetch).ConfigureAwait(false);
 
                         if(maxAge.HasValue)
                         {
@@ -406,8 +413,7 @@
                         }
 
                         messages.Add(message);
-
-                        lastOrdinal = position;
+                        lastOrdinal = message.Position;
                     }
 
                     bool isEnd = true;
@@ -428,7 +434,7 @@
             }
         }
 
-        private async Task<(StreamMessage message, int? maxAge, long position)> ReadAllStreamMessage(DbDataReader reader, PostgresqlStreamId streamId, bool prefetch)
+        private async Task<(StreamMessage message, int? maxAge, ulong transactionId)> ReadAllStreamMessage(DbDataReader reader, PostgresqlStreamId streamId, bool prefetch)
         {
             async Task<string> ReadString(int ordinal)
             {
@@ -453,12 +459,12 @@
 
             if(prefetch)
             {
-                return (new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, await ReadString(8).ConfigureAwait(false), transactionId),
-                    reader.GetFieldValue<int?>(9), position);
+                return (new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, await ReadString(8).ConfigureAwait(false)),
+                    reader.GetFieldValue<int?>(9), transactionId);
             }
 
-            return (new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, ct => GetJsonData(streamId, streamVersion)(ct), transactionId),
-                reader.GetFieldValue<int?>(8), position);
+            return (new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, ct => GetJsonData(streamId, streamVersion)(ct)),
+                reader.GetFieldValue<int?>(8), transactionId);
         }
     }
 }

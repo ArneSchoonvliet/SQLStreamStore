@@ -180,15 +180,14 @@
             var position = reader.GetInt64(3);
             var createdUtc = reader.GetDateTime(4);
             var type = reader.GetString(5);
-            var transactionId = reader.GetFieldValue<ulong>(6);
-            var jsonMetadata = await ReadString(7).ConfigureAwait(false);
+            var jsonMetadata = await ReadString(6).ConfigureAwait(false);
 
             if(prefetch)
             {
-                return new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, await ReadString(8).ConfigureAwait(false), transactionId);
+                return new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, await ReadString(7).ConfigureAwait(false));
             }
 
-            return new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, ct => GetJsonData(streamId, streamVersion)(ct), transactionId);
+            return new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, ct => GetJsonData(streamId, streamVersion)(ct));
         }
 
         protected override async Task<long> ReadHeadPositionInternal(CancellationToken cancellationToken)
