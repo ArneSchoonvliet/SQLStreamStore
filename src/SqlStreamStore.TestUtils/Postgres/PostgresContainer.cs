@@ -12,10 +12,17 @@ namespace SqlStreamStore.TestUtils.Postgres
     {
         private readonly IContainerService _containerService;
         private const int Port = 5432;
-        public override string ConnectionString => ConnectionStringBuilder.ConnectionString;
 
         public PostgresContainer(string databaseName)
-            : base(databaseName)
+            : base(new NpgsqlConnectionStringBuilder
+            {
+                Database = databaseName,
+                Password = "password",
+                Port = Port,
+                Username = "postgres",
+                Host = "127.0.0.1",
+                Pooling = true
+            })
         {
             _containerService = new Builder()
                 .UseContainer()
@@ -29,7 +36,13 @@ namespace SqlStreamStore.TestUtils.Postgres
                 .Build();
         }
 
-        public async Task Start(CancellationToken cancellationToken = default)
+        public override async Task CreateDatabase(CancellationToken cancellationToken = default)
+        {
+            await Start(cancellationToken);
+            await base.CreateDatabase(cancellationToken);
+        }
+
+        private async Task Start(CancellationToken cancellationToken = default)
         {
             _containerService.Start();
 
@@ -44,15 +57,5 @@ namespace SqlStreamStore.TestUtils.Postgres
                     }
                 });
         }
-
-        private NpgsqlConnectionStringBuilder ConnectionStringBuilder => new NpgsqlConnectionStringBuilder
-        {
-            Database = DatabaseName,
-            Password = "password",
-            Port = Port,
-            Username = "postgres",
-            Host = "127.0.0.1",
-            Pooling = true
-        };
     }
 }

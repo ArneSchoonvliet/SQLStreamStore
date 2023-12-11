@@ -10,13 +10,9 @@
     {
         public string ConnectionString => _databaseManager.ConnectionString;
         private readonly string _schema;
-        private readonly PostgresContainer _databaseManager;
-
+        private readonly PostgresDatabaseManager _databaseManager;
+        
         public PostgresStreamStoreDb(string schema)
-            : this(schema, new ConsoleTestoutputHelper())
-        { }
-
-        public PostgresStreamStoreDb(string schema, ITestOutputHelper testOutputHelper)
         {
             _schema = schema;
             _databaseManager = new PostgresContainer($"test_{Guid.NewGuid():n}");
@@ -25,7 +21,7 @@
         public PostgresStreamStoreDb(string schema, string connectionString)
         {
             _schema = schema;
-            _databaseManager = new PostgresContainer($"test_{Guid.NewGuid():n}");
+            _databaseManager = new PostgresServer(connectionString);
         }
 
         public async Task<PostgresStreamStore> GetPostgresStreamStore(GapHandlingSettings gapHandlingSettings, bool scavengeAsynchronously = false)
@@ -54,8 +50,7 @@
         {
             _databaseManager?.Dispose();
         }
-
-        public Task Start() => _databaseManager.Start();
+        
         public Task CreateDatabase() => _databaseManager.CreateDatabase();
 
         private class ConsoleTestoutputHelper : ITestOutputHelper
