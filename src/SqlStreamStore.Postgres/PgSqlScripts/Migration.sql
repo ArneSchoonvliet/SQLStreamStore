@@ -1,22 +1,39 @@
-COMMENT ON SCHEMA __schema__ IS '{ "version": 3 }';
+COMMENT ON SCHEMA __schema__ IS '{ "version": 4 }';
 
-DROP FUNCTION __schema__.read_all(int4, int8, bool, bool);
-CREATE OR REPLACE FUNCTION __schema__.read_all(
+-- UNCOMMENT WHEN V4 IS FINAL
+-- DROP FUNCTION __schema__.read_any_transactions_in_progress;
+
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS "transaction_id" XID8 NOT NULL DEFAULT pg_current_xact_id();
+
+CREATE OR REPLACE FUNCTION __schema__.read_xmin()
+  RETURNS XID8
+AS $F$
+BEGIN
+RETURN (SELECT pg_snapshot_xmin(pg_current_snapshot()));
+END;
+$F$
+LANGUAGE 'plpgsql';
+    
+-- REMOVE '2' SUFFIX WHEN V4 IS FINAL
+CREATE OR REPLACE FUNCTION __schema__.read_all2(
   _count    INT,
   _position BIGINT,
   _forwards BOOLEAN,
   _prefetch BOOLEAN
 )
   RETURNS SETOF REFCURSOR
-
 AS $F$
 
 DECLARE
-  _messages           REFCURSOR := 'messages';
-  _txinfo             REFCURSOR := 'tx_info';
+_messages           REFCURSOR := 'messages';
+  _txinfo           REFCURSOR := 'tx_info';
 BEGIN
 
-  OPEN _messages FOR
+OPEN _txinfo FOR
+SELECT pg_snapshot_xmin(pg_current_snapshot());
+RETURN NEXT _txinfo;
+
+OPEN _messages FOR
   WITH messages AS (
       SELECT __schema__.streams.id_original,
              __schema__.messages.message_id,
@@ -24,6 +41,7 @@ BEGIN
              __schema__.messages.position,
              __schema__.messages.created_utc,
              __schema__.messages.type,
+             __schema__.messages.transaction_id,
              __schema__.messages.json_metadata,
              (CASE _prefetch
                 WHEN TRUE THEN __schema__.messages.json_data
@@ -39,36 +57,188 @@ BEGIN
           (CASE WHEN not _forwards THEN __schema__.messages.position END) DESC
       LIMIT _count
   )
-  SELECT * FROM messages LIMIT _count;
-
-  RETURN NEXT _messages;
-
-  OPEN _txinfo FOR	
-  SELECT pg_snapshot_xip(pg_current_snapshot());
-  RETURN NEXT _txinfo;
+SELECT * FROM messages LIMIT _count;
+RETURN NEXT _messages;
 
 END;
 $F$
 LANGUAGE 'plpgsql';
-
-
-CREATE OR REPLACE FUNCTION __schema__.read_any_transactions_in_progress(
-    _datname NAME,
-    _txids   xid8[]
-)
-  RETURNS BOOLEAN
-AS $F$
+    
+CREATE OR REPLACE FUNCTION __schema__.append_to_stream(
+  _stream_id           CHAR(42),
+  _stream_id_original  VARCHAR(1000),
+  _metadata_stream_id  CHAR(42),
+  _expected_version    INT,
+  _created_utc         TIMESTAMP WITH TIME ZONE,
+  _new_stream_messages __schema__.new_stream_message [])
+  RETURNS TABLE(
+    current_version  INT,
+    current_position BIGINT
+  ) AS $F$
+DECLARE
+_current_version    INT;
+  _current_position   BIGINT;
+  _stream_id_internal INT;
+  _success            INT;
+  _max_age            INT;
+  _max_count          INT;
 BEGIN
-  RETURN (
-  SELECT EXISTS(
-    SELECT 1 
-    FROM pg_stat_activity AS activity
-    INNER JOIN (
-        SELECT pg_snapshot_xip(pg_current_snapshot()) AS txid
-    ) AS in_progress_txs 
-    ON activity.backend_xid = in_progress_txs.txid::xid
-    WHERE datname = _datname AND in_progress_txs.txid = ANY(_txids))
-  );
+  IF _created_utc IS NULL
+  THEN
+    _created_utc = now() at time zone 'utc';
+END IF;
+
+  IF _expected_version < 0
+  THEN
+SELECT __schema__.messages.json_data :: JSON->>'MaxAge', __schema__.messages.json_data :: JSON->>'MaxCount'
+INTO _max_age, _max_count
+FROM __schema__.messages
+    JOIN __schema__.streams ON __schema__.messages.stream_id_internal = __schema__.streams.id_internal
+WHERE __schema__.streams.id = _metadata_stream_id
+ORDER BY __schema__.messages.stream_version DESC
+    LIMIT 1;
+
+INSERT INTO __schema__.streams (id, id_original, max_age, max_count)
+SELECT _stream_id, _stream_id_original, _max_age, _max_count
+    ON CONFLICT DO NOTHING;
+GET DIAGNOSTICS _success = ROW_COUNT;
+
+END IF;
+
+  IF _expected_version = -1 /* ExpectedVersion.Empty */
+  THEN
+
+    IF _success = 0 AND
+       cardinality(_new_stream_messages) > 0 AND
+       (SELECT __schema__.streams.version FROM __schema__.streams WHERE __schema__.streams.id_internal = _stream_id_internal) > 0
+    THEN
+
+      RAISE EXCEPTION 'WrongExpectedVersion';
+END IF;
+  ELSIF _expected_version = -3 /* ExpectedVersion.NoStream */
+    THEN
+      IF _success = 0 AND cardinality(_new_stream_messages) > 0
+      THEN
+        PERFORM __schema__.enforce_idempotent_append(
+                  _stream_id,
+                  0,
+                  false,
+                  _new_stream_messages);
+SELECT version, position, id_internal
+INTO _current_version, _current_position, _stream_id_internal
+FROM __schema__.streams
+WHERE __schema__.streams.id = _stream_id;
+
+RETURN QUERY
+SELECT _current_version, _current_position;
+RETURN;
+END IF;
+END IF;
+
+SELECT (CASE _expected_version
+            WHEN -2 /* ExpectedVersion.Any */
+                THEN coalesce(
+                        __schema__.read_stream_version_of_message_id(
+                                __schema__.streams.id_internal,
+                                _new_stream_messages [ 1 ].message_id) - 1,
+                        __schema__.streams.version)
+            WHEN -3 THEN -1 /* ExpectedVersion.NoStream */
+            WHEN -1 THEN -1 /* ExpectedVersion.Empty */
+            ELSE _expected_version END), __schema__.streams.position, __schema__.streams.id_internal
+INTO _current_version, _current_position, _stream_id_internal
+FROM __schema__.streams
+WHERE __schema__.streams.id = _stream_id;
+
+IF (_expected_version >= 0 AND (
+                                   SELECT __schema__.streams.version
+                                   FROM __schema__.streams
+                                   WHERE __schema__.streams.id_internal = _stream_id_internal
+                                 ) < _expected_version)
+  THEN
+    RAISE EXCEPTION 'WrongExpectedVersion';
+END IF;
+
+  IF (_expected_version >= 0 AND _stream_id_internal IS NULL)
+  THEN
+    RAISE EXCEPTION 'WrongExpectedVersion';
+END IF;
+
+  IF cardinality(_new_stream_messages) > 0
+  THEN
+    INSERT INTO __schema__.messages (message_id,
+                                     stream_id_internal,
+                                     stream_version,
+                                     created_utc,
+                                     type,
+                                     json_data,
+                                     json_metadata,
+                                     transaction_id)
+SELECT m.message_id, _stream_id_internal, _current_version + (row_number()
+    over ()) :: int, _created_utc, m.type, m.json_data, m.json_metadata, pg_current_xact_id()
+FROM unnest(_new_stream_messages) m
+    ON CONFLICT DO NOTHING;
+GET DIAGNOSTICS _success = ROW_COUNT;
+
+IF (_success <> cardinality(_new_stream_messages))
+    THEN
+      IF (_expected_version = -2) /* ExpectedVersion.Any */
+      THEN
+
+        PERFORM __schema__.enforce_idempotent_append(
+                  _stream_id,
+                  _current_version + 1 - _success,
+                  false,
+                  _new_stream_messages);
+
+      ELSEIF _expected_version = -3 /* ExpectedVersion.NoStream */
+        THEN
+          RAISE EXCEPTION 'WhyAreYouHere'; /* there is no way to get here? */
+      ELSEIF _expected_version = -1 /* ExpectedVersion.Empty */
+        THEN
+          PERFORM __schema__.enforce_idempotent_append(
+                    _stream_id,
+                    0,
+                    false,
+                    _new_stream_messages);
+ELSE
+        PERFORM __schema__.enforce_idempotent_append(
+                  _stream_id,
+                  _expected_version + 1 - _success,
+                  true,
+                  _new_stream_messages);
+SELECT version, position, id_internal
+INTO _current_version, _current_position, _stream_id_internal
+FROM __schema__.streams
+WHERE __schema__.streams.id = _stream_id;
+
+RETURN QUERY
+SELECT _current_version, _current_position;
+RETURN;
+END IF;
+END IF;
+
+SELECT COALESCE(__schema__.messages.position, -1), COALESCE(__schema__.messages.stream_version, -1)
+INTO _current_position, _current_version
+FROM __schema__.messages
+WHERE __schema__.messages.stream_id_internal = _stream_id_internal
+ORDER BY __schema__.messages.position DESC
+    LIMIT 1;
+
+UPDATE __schema__.streams
+SET "version"  = _current_version,
+    "position" = _current_position
+WHERE id_internal = _stream_id_internal;
+
+RETURN QUERY
+SELECT _current_version, _current_position;
+
+ELSE
+    RETURN QUERY
+SELECT -1, -1 :: BIGINT;
+
+END IF;
+
 END;
+
 $F$
 LANGUAGE 'plpgsql';

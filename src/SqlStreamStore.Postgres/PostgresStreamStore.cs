@@ -241,7 +241,7 @@
         }
 
         /// <summary>
-        /// Returns the script that can be used to migrate to the latest schema version 2.
+        /// Returns the script that can be used to migrate to the latest schema version 4.
         /// </summary>
         /// <returns>The database creation script.</returns>
         public string GetMigrationScript()
