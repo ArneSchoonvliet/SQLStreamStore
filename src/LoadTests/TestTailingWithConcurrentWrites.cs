@@ -12,6 +12,7 @@
     using SqlStreamStore.Infrastructure;
     using SqlStreamStore.PgSqlScripts;
     using SqlStreamStore.Streams;
+    using SqlStreamStore.Subscriptions;
 
     public class TestTailingWithConcurrentWrites : LoadTest
     {
@@ -36,7 +37,7 @@
 
             try
             {
-                var maxConcurrentWriters = Input.ReadInt("Max concurrent writers: ", 1, 100);
+                var maxConcurrentWriters = Input.ReadInt("Max concurrent writers: ", 1, 1000);
                 var numberOfMessages = Input.ReadInt("Number of messages: ", 1000, 100000000);
                 int messageJsonDataSize = Input.ReadInt("Size of Json (kb): ", 1, 1024);
                 int readPageSize = Input.ReadInt("Read page size: ", 1, 10000);
@@ -44,13 +45,23 @@
                 string jsonData = $@"{{""b"": ""{new string('a', messageJsonDataSize * 1024)}""}}";
 
                 await RunSubscribe(pgStreamStore, readPageSize);
+                await Task.Delay(10000, ct);
 
                 var messageIterations = Enumerable.Repeat(0, numberOfMessages);
                 var options = new ParallelOptions { MaxDegreeOfParallelism = maxConcurrentWriters };
 
                 await Parallel.ForEachAsync(messageIterations,
                     options,
-                    async (_, cancellationToken) => { await AddWrite(pgStreamStore, schemaName, jsonData, cancellationToken); });
+                    async (_, cancellationToken) =>
+                    {
+                        try
+                        {
+                            await AddWrite(pgStreamStore, schemaName, jsonData, cancellationToken);
+                        }
+                        catch
+                        {
+                        }
+                    });
 
                 Output.WriteLine("Writes finished");
 
@@ -67,20 +78,24 @@
                 var sw = Stopwatch.StartNew();
 
                 // It's possible that s_db.Last() will never be equal to head (skipped event) hence why we time limit this loop.
-                var maxLoopTime = TimeSpan.FromMinutes(1).TotalMilliseconds;
+                var maxLoopTime = TimeSpan.FromMinutes(5).TotalMilliseconds;
                 while(sw.ElapsedMilliseconds < maxLoopTime)
                 {
                     var head = await pgStreamStore.ReadHeadPosition(ct);
                     lock(s_lock)
                     {
                         if(s_db.Any() && head == s_db.Last())
+                        {
+                            Output.WriteLine("Subscriber is caught up");
                             break;
+                        }
                     }
 
-                    await Task.Delay(150, ct);
+                    await Task.Delay(500, ct);
                 }
 
                 s_subscription.Dispose();
+                Output.WriteLine("Stopped subscribing");
 
                 lock(s_lock)
                 {
@@ -103,7 +118,7 @@
             }
         }
 
-        private static Task RunSubscribe(IStreamStore streamStore, int readPageSize)
+        private static Task RunSubscribe(IReadonlyStreamStore streamStore, int readPageSize)
         {
             s_subscription = streamStore.SubscribeToAll(
                 null,
@@ -114,9 +129,17 @@
                         s_db.Add(m.Position);
                         return Task.CompletedTask;
                     }
+                },
+                (_, reason, exception) =>
+                {
+                    if(reason is SubscriptionDroppedReason.Disposed)
+                        return;
+                    
+                    Output.WriteLine("Subscriber crashed! Exception {exception}", exception);
+                    Environment.Exit(1);
                 });
+            
             s_subscription.MaxCountPerRead = readPageSize;
-
             return s_subscription.Started;
         }
 
