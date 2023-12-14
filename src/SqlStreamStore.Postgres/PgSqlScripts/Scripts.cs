@@ -35,7 +35,7 @@
         private string ListStreams => GetScript(nameof(ListStreams));
         private string ListStreamsStartingWith => GetScript(nameof(ListStreamsStartingWith));
         private string ListStreamsEndingWith => GetScript(nameof(ListStreamsEndingWith));
-        private string ReadAll => GetScript(nameof(ReadAll));
+        private string ReadAll2 => GetScript(nameof(ReadAll2));
 
         private string Read => GetScript(nameof(Read));
 
@@ -69,7 +69,7 @@
             ListStreamsStartingWith,
             ListStreamsEndingWith,
             Read,
-            ReadAll,
+            ReadAll2,
             ReadJsonData,
             ReadHeadPosition,
             ReadStreamHeadPosition,
