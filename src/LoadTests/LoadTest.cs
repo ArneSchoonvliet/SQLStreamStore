@@ -51,7 +51,7 @@
                 () =>
                 {
                     streamStore.Dispose();
-                    // disposable?.Dispose();
+                    disposable?.Dispose();
                 });
         }
         
