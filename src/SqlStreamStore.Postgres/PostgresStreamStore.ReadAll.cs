@@ -32,23 +32,26 @@
                 isEnd = r.isEnd;
                 messages = r.messages;
 
-                // TODO Change to Tracing before 'REAL RELEASE'
+                // TODO Change to Tracing logging before 'REAL RELEASE'
                 if(Logger.IsWarnEnabled() && messages.Any())
                 {
+                    var expectedStartPosition = fromPositionInclusive;
+                    var actualStartPosition = messages[0].Position;
+                    
                     // Check for gap between last page and this. 
-                    if(messages[0].Position != fromPositionInclusive)
+                    if(expectedStartPosition != actualStartPosition)
                     {
-                        Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {fromPosition}", correlation, fromPositionInclusive);
+                        Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {position}", correlation, expectedStartPosition);
                     }
 
                     for(int i = 0; i < messages.Count - 1; i++)
                     {
                         var expectedNextPosition = messages[i].Position + 1;
-                        var actualPosition = messages[i + 1].Position;
+                        var actualNextPosition = messages[i + 1].Position;
 
-                        if(expectedNextPosition != actualPosition)
+                        if(expectedNextPosition != actualNextPosition)
                         {
-                            Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {actualPosition}", correlation, actualPosition);
+                            Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {positi.on}", correlation, expectedNextPosition);
                         }
                     }
                 }
