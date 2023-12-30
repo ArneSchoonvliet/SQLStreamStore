@@ -51,7 +51,7 @@
 
                         if(expectedNextPosition != actualNextPosition)
                         {
-                            Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {positi.on}", correlation, expectedNextPosition);
+                            Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {position}", correlation, expectedNextPosition);
                         }
                     }
                 }
