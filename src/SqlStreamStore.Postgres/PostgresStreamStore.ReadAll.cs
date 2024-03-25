@@ -37,7 +37,7 @@
                 {
                     var expectedStartPosition = fromPositionInclusive;
                     var actualStartPosition = messages[0].Position;
-                    
+
                     // Check for gap between last page and this. 
                     if(expectedStartPosition != actualStartPosition)
                     {
@@ -437,7 +437,7 @@
             }
         }
 
-        private async Task<(StreamMessage message, int? maxAge, ulong transactionId)> ReadAllStreamMessage(DbDataReader reader, PostgresqlStreamId streamId, bool prefetch)
+        private async Task<(StreamMessage message, int? maxAge, ulong transactionId)> ReadAllStreamMessage(NpgsqlDataReader reader, PostgresqlStreamId streamId, bool prefetch)
         {
             async Task<string> ReadString(int ordinal)
             {
@@ -446,7 +446,7 @@
                     return null;
                 }
 
-                using(var textReader = reader.GetTextReader(ordinal))
+                using(var textReader = await reader.GetTextReaderAsync(ordinal).ConfigureAwait(false))
                 {
                     return await textReader.ReadToEndAsync().ConfigureAwait(false);
                 }
@@ -467,7 +467,7 @@
             }
 
             return (new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, ct => GetJsonData(streamId, streamVersion)(ct)),
-                reader.GetFieldValue<int?>(8), transactionId);
+                reader.GetFieldValue<int?>(9), transactionId);
         }
     }
 }
