@@ -258,9 +258,9 @@
 
         public static NpgsqlParameter Empty()
         {
-            return new NpgsqlParameter<DBNull>
+            return new NpgsqlParameter
             {
-                TypedValue = DBNull.Value
+                Value = DBNull.Value
             };
         }
     }
