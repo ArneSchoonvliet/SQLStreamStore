@@ -25,7 +25,6 @@
             {
                 var databaseName = $"test_{Guid.NewGuid():n}";
                 var dockerInstance = new PostgresContainer(databaseName);
-                await dockerInstance.Start();
                 await dockerInstance.CreateDatabase();
 
                 fixture = new PostgresStreamStoreFixture(

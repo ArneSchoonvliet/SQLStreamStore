@@ -33,8 +33,9 @@
                 position,
                 createdUtc,
                 type,
-                jsonMetadata, _ => Task.FromResult(jsonData))
-        {}
+                jsonMetadata,
+                _ => Task.FromResult(jsonData))
+        { }
 
         public StreamMessage(
             string streamId,

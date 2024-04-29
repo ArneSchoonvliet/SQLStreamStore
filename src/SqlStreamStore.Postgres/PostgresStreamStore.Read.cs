@@ -198,7 +198,7 @@
             {
                 var result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
 
-                return result == DBNull.Value ? Position.End : (long) result;
+                return result == DBNull.Value ? Position.End : (long)result;
             }
         }
 
@@ -210,7 +210,7 @@
             {
                 var result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
 
-                return result == DBNull.Value ? Position.End : (long) result;
+                return result == DBNull.Value ? Position.End : (long)result;
             }
         }
 
@@ -222,7 +222,7 @@
             {
                 var result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
 
-                return result == DBNull.Value ? StreamVersion.End : (int) result;
+                return result == DBNull.Value ? StreamVersion.End : (int)result;
             }
         }
     }

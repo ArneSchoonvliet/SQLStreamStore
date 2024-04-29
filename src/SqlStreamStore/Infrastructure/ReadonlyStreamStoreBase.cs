@@ -309,14 +309,14 @@ namespace SqlStreamStore.Infrastructure
         public event Action OnDispose;
 
         protected abstract Task<ReadAllPage> ReadAllForwardsInternal(
-            long fromPositionExclusive,
+            long fromPositionInclusive,
             int maxCount,
             bool prefetch,
             ReadNextAllPage readNext,
             CancellationToken cancellationToken);
 
         protected abstract Task<ReadAllPage> ReadAllBackwardsInternal(
-            long fromPositionExclusive,
+            long fromPositionInclusive,
             int maxCount,
             bool prefetch,
             ReadNextAllPage readNext,

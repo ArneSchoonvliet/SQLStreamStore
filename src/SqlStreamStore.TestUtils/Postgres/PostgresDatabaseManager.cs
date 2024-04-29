@@ -6,20 +6,19 @@ namespace SqlStreamStore.TestUtils.Postgres
 
     public abstract class PostgresDatabaseManager
     {
-        protected readonly string DatabaseName;
-
         private bool _started;
 
+        protected NpgsqlConnectionStringBuilder ConnectionStringBuilder { get; }
+        public string ConnectionString => ConnectionStringBuilder.ConnectionString;
+        protected string DatabaseName => ConnectionStringBuilder.Database;
         protected string DefaultConnectionString => new NpgsqlConnectionStringBuilder(ConnectionString)
         {
-            Database = null
+            Database = "postgres"
         }.ConnectionString;
 
-        public abstract string ConnectionString { get; }
-
-        protected PostgresDatabaseManager(string databaseName)
+        protected PostgresDatabaseManager(NpgsqlConnectionStringBuilder npgsqlConnectionStringBuilder)
         {
-            DatabaseName = databaseName;
+            ConnectionStringBuilder = npgsqlConnectionStringBuilder;
         }
 
         public virtual async Task CreateDatabase(CancellationToken cancellationToken = default)

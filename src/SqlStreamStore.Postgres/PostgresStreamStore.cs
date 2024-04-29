@@ -84,6 +84,7 @@
 
                     await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                 }
+
                 await connection.ReloadTypesAsync();
             }
         }
@@ -123,7 +124,7 @@
                 using(var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
                 using(var command = BuildFunctionCommand(_schema.ReadSchemaVersion, transaction))
                 {
-                    var result = (int) await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+                    var result = (int)await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
                     return new CheckSchemaResult(result, CurrentVersion);
                 }
             }
@@ -147,7 +148,7 @@
                     return null;
                 }
 
-                using(var textReader = await reader.GetTextReaderAsync(0, cancellationToken))
+                using(var textReader = await reader.GetTextReaderAsync(0, cancellationToken).ConfigureAwait(false))
                 {
                     return await textReader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
                 }
@@ -241,7 +242,7 @@
         }
 
         /// <summary>
-        /// Returns the script that can be used to migrate to the latest schema version 2.
+        /// Returns the script that can be used to migrate to the latest schema version 4.
         /// </summary>
         /// <returns>The database creation script.</returns>
         public string GetMigrationScript()
@@ -252,7 +253,7 @@
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            if (_settings.InternalManagedDataSource)
+            if(_settings.InternalManagedDataSource)
                 _dataSource.Dispose();
         }
     }
