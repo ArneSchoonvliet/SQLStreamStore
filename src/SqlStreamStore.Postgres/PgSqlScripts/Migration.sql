@@ -1,7 +1,6 @@
 COMMENT ON SCHEMA __schema__ IS '{ "version": 4 }';
 
--- UNCOMMENT WHEN V4 IS FINAL
--- DROP FUNCTION __schema__.read_any_transactions_in_progress;
+DROP FUNCTION __schema__.read_any_transactions_in_progress;
 
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS "transaction_id" XID8 NOT NULL DEFAULT pg_current_xact_id();
 
@@ -14,8 +13,7 @@ END;
 $F$
 LANGUAGE 'plpgsql';
     
--- REMOVE '2' SUFFIX WHEN V4 IS FINAL
-CREATE OR REPLACE FUNCTION __schema__.read_all2(
+CREATE OR REPLACE FUNCTION __schema__.read_all(
   _count    INT,
   _position BIGINT,
   _forwards BOOLEAN,

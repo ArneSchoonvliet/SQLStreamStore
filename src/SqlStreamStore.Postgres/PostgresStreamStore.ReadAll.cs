@@ -4,7 +4,6 @@
     using System.Collections.Generic;
     using System.Collections.ObjectModel;
     using System.Data;
-    using System.Data.Common;
     using System.Diagnostics;
     using System.Linq;
     using System.Text;
@@ -32,8 +31,7 @@
                 isEnd = r.isEnd;
                 messages = r.messages;
 
-                // TODO Change to Tracing logging before 'REAL RELEASE'
-                if(Logger.IsWarnEnabled() && messages.Any())
+                if(Logger.IsTraceEnabled() && messages.Any())
                 {
                     var expectedStartPosition = fromPositionInclusive;
                     var actualStartPosition = messages[0].Position;
@@ -41,7 +39,7 @@
                     // Check for gap between last page and this. 
                     if(expectedStartPosition != actualStartPosition)
                     {
-                        Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {position}", correlation, expectedStartPosition);
+                        Logger.TraceFormat("Correlation: {correlation} | Real gap detected on {position}", correlation, expectedStartPosition);
                     }
 
                     for(int i = 0; i < messages.Count - 1; i++)
@@ -51,7 +49,7 @@
 
                         if(expectedNextPosition != actualNextPosition)
                         {
-                            Logger.WarnFormat("Correlation: {correlation} | Real gap detected on {position}", correlation, expectedNextPosition);
+                            Logger.TraceFormat("Correlation: {correlation} | Real gap detected on {position}", correlation, expectedNextPosition);
                         }
                     }
                 }
