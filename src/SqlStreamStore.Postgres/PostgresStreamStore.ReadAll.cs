@@ -22,16 +22,13 @@
 
             maxCount = maxCount == int.MaxValue ? maxCount - 1 : maxCount;
 
-            var (messages, maxAgeDict, transactionIdDict, xMin, isEnd) = await ReadAllForwards(fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
+            var page = await ReadAllForwards(fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
 
             if(_settings.GapHandlingSettings != null)
             {
-                var r = await HandleGaps(messages, maxAgeDict, transactionIdDict, xMin, isEnd, fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
+                var (messages, _, isEnd) = await HandleGaps(page, fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
 
-                isEnd = r.isEnd;
-                messages = r.messages;
-
-                if(Logger.IsTraceEnabled() && messages.Any())
+                if(Logger.IsTraceEnabled() && messages.Count != 0)
                 {
                     var expectedStartPosition = fromPositionInclusive;
                     var actualStartPosition = messages[0].Position;
@@ -55,33 +52,29 @@
                 }
             }
 
-            if(!messages.Any())
+            if(page.Messages.Count == 0)
             {
-                return new ReadAllPage(fromPositionInclusive, fromPositionInclusive, isEnd, ReadDirection.Forward, readNext, Array.Empty<StreamMessage>());
+                return new ReadAllPage(fromPositionInclusive, fromPositionInclusive, page.IsEnd, ReadDirection.Forward, readNext, Array.Empty<StreamMessage>());
             }
 
-            var filteredMessages = FilterExpired(messages, maxAgeDict);
-            var nextPosition = filteredMessages[filteredMessages.Count - 1].Position + 1;
+            var filteredMessages = FilterExpired(page.Messages, page.MaxAgeDict);
+            var nextPosition = filteredMessages[^1].Position + 1;
 
-            return new ReadAllPage(fromPositionInclusive, nextPosition, isEnd, ReadDirection.Forward, readNext, filteredMessages.ToArray());
+            return new ReadAllPage(fromPositionInclusive, nextPosition, page.IsEnd, ReadDirection.Forward, readNext, filteredMessages.ToArray());
         }
 
         private async Task<(ReadOnlyCollection<StreamMessage> messages, ReadOnlyDictionary<string, int> maxAgeDict, bool isEnd)> HandleGaps(
-            ReadOnlyCollection<StreamMessage> messages,
-            ReadOnlyDictionary<string, int> maxAgeDict,
-            ReadOnlyDictionary<long, ulong> transactionIdDict,
-            ulong xMin,
-            bool isEnd,
+            ReadForwardsPage page,
             long fromPositionInclusive,
             int maxCount,
             bool prefetch,
             Guid correlation,
             CancellationToken cancellationToken)
         {
+            var (messages, maxAgeDict, transactionIdDict, xMin, isEnd) = page;
             var hasMessages = messages.Count > 0;
 
-            // We do this as otherwise the Select always enumerates even when trace log is disabled.
-            // When we retrieve high amount of messages this will impact the performance.
+            // Avoid unnecessary enumeration in logs when trace logging is disabled.
             if(Logger.IsTraceEnabled())
             {
                 Logger.TraceFormat("Correlation: {correlation} | {messages} | Xmin: {xMin}",
@@ -97,51 +90,177 @@
                 Logger.TraceFormat("Correlation: {correlation} | No messages found. We will return empty list of messages with isEnd to true", correlation, messages);
                 return (new ReadOnlyCollection<StreamMessage>(new List<StreamMessage>()), new ReadOnlyDictionary<string, int>(new Dictionary<string, int>()), true);
             }
-
+            
+            /*
+             * Problem Summary:
+             * This event store system, backed by a PostgreSQL database, assigns positions to events using a sequence.
+             * Due to high levels of parallel transactions, we encounter "gaps" in the sequence for several reasons:
+             *
+             * 1. In-flight Transactions:
+             *    - When multiple transactions are running concurrently, some transactions may receive a lower position
+             *      but complete later, creating temporary "gaps" in the sequence.
+             *    - To detect whether a gap is temporary or permanent, we use PostgreSQL’s `pg_current_snapshot()`
+             *      function to retrieve xmin, which marks the minimum transaction ID visible to the current transaction.
+             *    - Our logic polls the database, re-reading messages until xmin surpasses the maxTransactionId
+             *      observed in the current read batch. This ensures that any "in-flight" transactions with a lower
+             *      position but delayed visibility will have become visible before we determine if the gap is permanent.
+             *
+             *    - Theoretical Sufficiency:
+             *      - In theory, this polling approach should be enough to distinguish between temporary and permanent gaps,
+             *        allowing us to avoid skipping valid events due to transactions that are still in-flight but not yet visible.
+             *      - Once xmin is higher than maxTransactionId, we can safely assume that any gaps are permanent,
+             *        typically due to rollbacks.
+             *
+             * 2. Handling Unexpected Anomalies:
+             *    - In practice, we occasionally observe cases where a row with a lower position has a higher transaction ID,
+             *      which can disrupt this algorithm by causing false gaps that do not resolve even after repeated polling.
+             *      See: https://dba.stackexchange.com/questions/342896/in-what-case-can-a-new-transaction-claim-an-older-sequence-id-in-postgresql
+             *    - To address this, we introduce a SafetyTransactionGap setting, which defines a buffer zone above
+             *      maxTransactionId within which we consider transactions as potentially still in-flight.
+             *
+             * 3. Safety Gap Mechanism:
+             *    - If the difference between xmin and maxTransactionId is smaller than the configured SafetyTransactionGap,
+             *      we assume the gap could still be due to an in-flight transaction and will wait briefly before re-reading messages.
+             *    - This delay time is configurable using DelayTime, which sets the interval to wait before polling again,
+             *      helping to ensure all in-flight transactions have a chance to become visible.
+             *    - If the gap between xmin and maxTransactionId exceeds the SafetyTransactionGap, we treat these as real gaps
+             *      (likely due to rollbacks) and proceed without further delay, as the missing messages are assumed to be permanent.
+             */
+            
+            // Determine the highest transaction ID from the current messages.
+            // This is the minimum value we want xMin to exceed to be in a "safe" state.
             var maxTransactionId = transactionIdDict.Select(x => x.Value).Max();
-            if(maxTransactionId < xMin)
-            {
-                Logger.TraceFormat("Correlation: {correlation} | All messages have a transaction id lower than xMin {xMin}, no need for gap checking", correlation, xMin);
+            var gapHandlingBehaviour = DetermineGapHandlingBehaviour(xMin, maxTransactionId, correlation);
+            
+            // If we don't need to handle the gaps, return immediately. It should now contain no gaps are permanent gaps
+            if (gapHandlingBehaviour == GapHandelingBehaviour.None)
                 return (messages, maxAgeDict, isEnd);
+            
+            // Check for any gaps between received messages and fromPositionInclusive or within the current page.
+            // If this isn't the case we are sure there are no gaps and we are safe to return the messages
+            if(!HasGapWithPreviousPage(messages, fromPositionInclusive, correlation) && !HasGapsWithinPage(messages, correlation))
+                return (messages, maxAgeDict, isEnd);
+            
+            Logger.TraceFormat("Correlation: {correlation} | Detected gap, initiating handling mechanism {gapHandlingBehaviour}", correlation, gapHandlingBehaviour);
+                
+            switch(gapHandlingBehaviour)
+            {
+                case GapHandelingBehaviour.PollXmin:
+                    await PollXmin(maxTransactionId, correlation, cancellationToken);
+                    break;
+                case GapHandelingBehaviour.StaticDelay:
+                    await Delay(_settings.GapHandlingSettings.DelayTime, correlation, cancellationToken);
+                    break;
+                default:
+                    throw new NotImplementedException($"Unknown gap handling behaviour: {gapHandlingBehaviour}");
             }
+            
+            var stablePage = await ReadBetween(
+                fromPositionInclusive, 
+                messages[^1].Position, 
+                maxCount, 
+                prefetch, 
+                correlation, 
+                cancellationToken
+            ).ConfigureAwait(false);
+                
+            // Polling theoretically ensures gaps have stabilized, with `xMin` exceeding the latest transaction ID.
+            // However, given rare edge cases, we still verify that `xMin` is safely distanced from `maxTransactionId`.
+            if (gapHandlingBehaviour == GapHandelingBehaviour.PollXmin) 
+                return await HandleGaps(stablePage, fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken)
+                    .ConfigureAwait(false);
+                
+            return (stablePage.Messages, stablePage.MaxAgeDict, stablePage.IsEnd);
+        }
+        
+        private GapHandelingBehaviour DetermineGapHandlingBehaviour(ulong xMin, ulong maxTransactionId, Guid correlation)
+        {
+            // If xMin is greater than maxTransactionId, theoretically we should be safe.
+            if(xMin > maxTransactionId)
+            {
+                // No SafetyTransactionGap configured, so gaps are assumed to be real, and messages can be safely returned.
+                if(!_settings.GapHandlingSettings.SafetyTransactionGap.HasValue)
+                {
+                    Logger.TraceFormat("Correlation: {correlation} | All messages have a transaction ID lower than xMin ({xMin}), no need for gap checking.", correlation, xMin);
+                    return GapHandelingBehaviour.None;
+                }
 
-            Logger.TraceFormat("Correlation: {correlation} | Danger zone! We have messages and xMin ({xMin}) is not higher than maxTransactionId ({maxTransactionId}), we need to start gap checking",
+                // SafetyTransactionGap is configured. If xMin exceeds maxTransactionId + safety gap, gaps are assumed to be permanent, and messages can be returned.
+                if(xMin > maxTransactionId + _settings.GapHandlingSettings.SafetyTransactionGap.Value)
+                {
+                    Logger.TraceFormat("Correlation: {correlation} | All messages have a transaction ID lower than xMin ({xMin}) + safety gap ({safetyGap}), no need for gap checking.",
+                        correlation,
+                        xMin,
+                        _settings.GapHandlingSettings.SafetyTransactionGap);
+                    return GapHandelingBehaviour.None;
+                }
+
+                // xMin exceeds maxTransactionId but falls within the safety gap threshold, so we set a static delay (DelayTime) before re-reading to resolve in-flight transactions.
+                Logger.InfoFormat(
+                    "Correlation: {correlation} | Caution! Detected a too narrow gap between maxTransactionId ({maxTransactionId}) and xMin ({xMin}), within safety threshold ({safetyGap}). Engaging static delay.",
+                    correlation,
+                    maxTransactionId,
+                    xMin,
+                    _settings.GapHandlingSettings.SafetyTransactionGap,
+                    _settings.GapHandlingSettings.DelayTime ?? 0);
+
+                // Set a static delay, as polling xMin isn’t beneficial since xMin already exceeds maxTransactionId.
+                return GapHandelingBehaviour.StaticDelay;
+            }
+            
+            // xMin is not greater than maxTransactionId, so initiate gap checking by polling xMin.
+            Logger.InfoFormat(
+                "Correlation: {correlation} | Caution! xMin ({xMin}) is not higher than maxTransactionId ({maxTransactionId}), engaging polling for gap checking.",
                 correlation,
                 xMin,
                 maxTransactionId);
 
-            // Check for gap between last page and this. 
-            if(messages[0].Position != fromPositionInclusive)
+            return GapHandelingBehaviour.PollXmin;
+        }
+
+        // Checks if there’s a gap between the provided starting position and the first message's position in the current page.
+        private bool HasGapWithPreviousPage(ReadOnlyCollection<StreamMessage> messages, long fromPositionInclusive, Guid correlation)
+        {
+            var hasGap = messages[0].Position != fromPositionInclusive;
+            if (hasGap)
             {
                 Logger.TraceFormat(
                     "Correlation: {correlation} | fromPositionInclusive {fromPositionInclusive} does not match first position of received messages {position}",
                     correlation,
                     fromPositionInclusive,
                     messages[0].Position);
-
-                await PollXmin(maxTransactionId, correlation, cancellationToken).ConfigureAwait(false);
-                return await ReadTrustedMessages(fromPositionInclusive, messages[messages.Count - 1].Position, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
             }
+            return hasGap;
+        }
 
-            for(int i = 0; i < messages.Count - 1; i++)
+        // Checks for gaps within the positions in a single page of messages.
+        private bool HasGapsWithinPage(ReadOnlyCollection<StreamMessage> messages, Guid correlation)
+        {
+            for (int i = 0; i < messages.Count - 1; i++)
             {
                 var expectedNextPosition = messages[i].Position + 1;
                 var actualPosition = messages[i + 1].Position;
-                Logger.TraceFormat("Correlation: {correlation} | Gap checking. Expected position: {expectedNextPosition} | Actual position: {actualPosition}",
+        
+                Logger.TraceFormat(
+                    "Correlation: {correlation} | Gap checking. Expected position: {expectedNextPosition} | Actual position: {actualPosition}",
                     correlation,
                     expectedNextPosition,
                     actualPosition);
 
-                if(expectedNextPosition != actualPosition)
+                if (expectedNextPosition != actualPosition)
                 {
                     Logger.TraceFormat("Correlation: {correlation} | Gap detected", correlation);
-
-                    await PollXmin(maxTransactionId, correlation, cancellationToken).ConfigureAwait(false);
-                    return await ReadTrustedMessages(fromPositionInclusive, messages[messages.Count - 1].Position, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
+                    return true;
                 }
             }
-
-            return (messages, maxAgeDict, isEnd);
+            return false;
+        }
+        
+        private async Task Delay(int? delay, Guid correlation, CancellationToken cancellationToken)
+        {
+            var nonNullableDelay = delay ?? 0;
+            Logger.TraceFormat("Correlation: {correlation} | Gaps detected but xMin was already reached, waiting for {delay}ms", correlation, delay);
+            await Task.Delay(nonNullableDelay, cancellationToken).ConfigureAwait(false);
         }
 
         private async Task PollXmin(ulong maximumTransactionId, Guid correlation, CancellationToken cancellationToken)
@@ -227,7 +346,7 @@
             }
         }
 
-        private async Task<(ReadOnlyCollection<StreamMessage>, ReadOnlyDictionary<string, int>, bool)> ReadTrustedMessages(
+        private async Task<ReadForwardsPage> ReadBetween(
             long fromPositionInclusive,
             long toPositionInclusive,
             int maxCount,
@@ -236,7 +355,7 @@
             CancellationToken cancellationToken)
         {
             Logger.TraceFormat("Correlation: {correlation} | Read trusted message initiated", correlation);
-            var (messages, maxAgeDict, _, _, isEnd) = await ReadAllForwards(fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
+            var (messages, maxAgeDict, transactionIdDict, xMin, isEnd) = await ReadAllForwards(fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
 
             Logger.TraceFormat("Correlation: {correlation} | Filter messages from {fromPositionInclusive} to {toPositionInclusive}", correlation, fromPositionInclusive, toPositionInclusive);
             var messageToReturn = messages.Where(x => x.Position >= fromPositionInclusive && x.Position <= toPositionInclusive).ToList();
@@ -245,7 +364,7 @@
                 isEnd = false;
 
             Logger.TraceFormat("Correlation: {correlation} | IsEnd: {isEnd} | FilteredCount: {filteredCount} | TotalCount: {totalCount}", correlation, isEnd, messageToReturn.Count, messages.Count);
-            return (messageToReturn.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), isEnd);
+            return new ReadForwardsPage(messageToReturn.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), transactionIdDict, xMin, isEnd);
         }
 
         private async Task<ulong> ReadXmin(CancellationToken cancellationToken)
@@ -259,13 +378,12 @@
             }
         }
 
-        private async Task<(ReadOnlyCollection<StreamMessage> messages, ReadOnlyDictionary<string, int> maxAgeDict, ReadOnlyDictionary<long, ulong> transactionIdDict, ulong xMin, bool isEnd)>
-            ReadAllForwards(
-                long fromPositionInclusive,
-                int maxCount,
-                bool prefetch,
-                Guid correlation,
-                CancellationToken cancellationToken)
+        private async Task<ReadForwardsPage> ReadAllForwards(
+            long fromPositionInclusive,
+            int maxCount,
+            bool prefetch,
+            Guid correlation,
+            CancellationToken cancellationToken)
         {
             var sw = Stopwatch.StartNew();
 
@@ -308,7 +426,7 @@
                             xMin,
                             true);
 
-                        return (new List<StreamMessage>().AsReadOnly(),
+                        return new ReadForwardsPage(new List<StreamMessage>().AsReadOnly(),
                             new ReadOnlyDictionary<string, int>(new Dictionary<string, int>()),
                             new ReadOnlyDictionary<long, ulong>(new Dictionary<long, ulong>()),
                             xMin,
@@ -349,7 +467,12 @@
                         xMin,
                         isEnd);
 
-                    return (messages.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), new ReadOnlyDictionary<long, ulong>(transactionIdDict), xMin, isEnd);
+                    return new ReadForwardsPage(
+                        messages.AsReadOnly(),
+                        new ReadOnlyDictionary<string, int>(maxAgeDict),
+                        new ReadOnlyDictionary<long, ulong>(transactionIdDict),
+                        xMin,
+                        isEnd);
                 }
             }
         }
@@ -466,6 +589,45 @@
 
             return (new StreamMessage(streamId.IdOriginal, messageId, streamVersion, position, createdUtc, type, jsonMetadata, ct => GetJsonData(streamId, streamVersion)(ct)),
                 reader.GetFieldValue<int?>(9), transactionId);
+        }
+
+        private enum GapHandelingBehaviour
+        {
+            None = 1,
+            PollXmin = 2,
+            StaticDelay = 3
+        }
+        
+        private class ReadForwardsPage
+        {
+            public ReadOnlyCollection<StreamMessage> Messages { get; }
+            public ReadOnlyDictionary<string, int> MaxAgeDict { get; }
+            public ReadOnlyDictionary<long, ulong> TransactionIdDict { get; }
+            public ulong XMin { get; }
+            public bool IsEnd { get; }
+
+            public ReadForwardsPage(ReadOnlyCollection<StreamMessage> messages, ReadOnlyDictionary<string, int> maxAgeDict, ReadOnlyDictionary<long, ulong> transactionIdDict, ulong xMin, bool isEnd)
+            {
+                Messages = messages;
+                MaxAgeDict = maxAgeDict;
+                TransactionIdDict = transactionIdDict;
+                XMin = xMin;
+                IsEnd = isEnd;
+            }
+
+            public void Deconstruct(
+                out ReadOnlyCollection<StreamMessage> messages,
+                out ReadOnlyDictionary<string, int> maxAgeDict,
+                out ReadOnlyDictionary<long, ulong> transactionIdDict,
+                out ulong xMin,
+                out bool isEnd)
+            {
+                messages = Messages;
+                maxAgeDict = MaxAgeDict;
+                transactionIdDict = TransactionIdDict;
+                xMin = XMin;
+                isEnd = IsEnd;
+            }
         }
     }
 }
