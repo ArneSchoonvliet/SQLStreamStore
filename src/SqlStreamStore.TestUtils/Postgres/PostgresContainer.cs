@@ -27,7 +27,7 @@ namespace SqlStreamStore.TestUtils.Postgres
             _containerService = new Builder()
                 .UseContainer()
                 .WithName("sql-stream-store-tests-postgres")
-                .UseImage("postgres:14-alpine")
+                .UseImage("postgres:17-alpine")
                 .KeepRunning()
                 .ReuseIfExists()
                 .WithEnvironment("POSTGRES_PASSWORD=password")
