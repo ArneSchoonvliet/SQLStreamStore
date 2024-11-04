@@ -26,12 +26,12 @@
         public long SkipTime { get; }
 
         /// <summary>
-        /// If we detect a gap and this option is specified we will wait at least <see cref="DelayTime"/> to recheck if gap is still there
+        /// If we detect a gap and this option is specified we will wait at least <see cref="DelayTime"/> to recheck if the gap is still there
         /// </summary>
         public uint? SafetyTransactionGap { get; }
         
         /// <summary>
-        /// If we detect a gap and <see cref="SafetyTransactionGap"/> is specified we will wait at least this time to recheck if gap is still there
+        /// If we detect a gap and <see cref="SafetyTransactionGap"/> is specified we will wait at least this time to recheck if the gap is still there
         /// </summary>
         public int? DelayTime { get; }
     }
