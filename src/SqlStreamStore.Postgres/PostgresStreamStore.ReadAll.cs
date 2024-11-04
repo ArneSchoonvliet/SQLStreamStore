@@ -26,12 +26,12 @@
 
             if(_settings.GapHandlingSettings != null)
             {
-                var (messages, _, isEnd) = await HandleGaps(page, fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
+                page = await HandleGaps(page, fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken).ConfigureAwait(false);
 
-                if(Logger.IsTraceEnabled() && messages.Count != 0)
+                if(Logger.IsTraceEnabled() && page.Messages.Count != 0)
                 {
                     var expectedStartPosition = fromPositionInclusive;
-                    var actualStartPosition = messages[0].Position;
+                    var actualStartPosition = page.Messages[0].Position;
 
                     // Check for gap between last page and this. 
                     if(expectedStartPosition != actualStartPosition)
@@ -39,10 +39,10 @@
                         Logger.TraceFormat("Correlation: {correlation} | Real gap detected on {position}", correlation, expectedStartPosition);
                     }
 
-                    for(int i = 0; i < messages.Count - 1; i++)
+                    for(int i = 0; i < page.Messages.Count - 1; i++)
                     {
-                        var expectedNextPosition = messages[i].Position + 1;
-                        var actualNextPosition = messages[i + 1].Position;
+                        var expectedNextPosition = page.Messages[i].Position + 1;
+                        var actualNextPosition = page.Messages[i + 1].Position;
 
                         if(expectedNextPosition != actualNextPosition)
                         {
@@ -63,7 +63,7 @@
             return new ReadAllPage(fromPositionInclusive, nextPosition, page.IsEnd, ReadDirection.Forward, readNext, filteredMessages.ToArray());
         }
 
-        private async Task<(ReadOnlyCollection<StreamMessage> messages, ReadOnlyDictionary<string, int> maxAgeDict, bool isEnd)> HandleGaps(
+        private async Task<ReadForwardsPage> HandleGaps(
             ReadForwardsPage page,
             long fromPositionInclusive,
             int maxCount,
@@ -71,7 +71,7 @@
             Guid correlation,
             CancellationToken cancellationToken)
         {
-            var (messages, maxAgeDict, transactionIdDict, xMin, isEnd) = page;
+            var (messages, _, transactionIdDict, xMin, _) = page;
             var hasMessages = messages.Count > 0;
 
             // Avoid unnecessary enumeration in logs when trace logging is disabled.
@@ -87,8 +87,8 @@
 
             if(!hasMessages)
             {
-                Logger.TraceFormat("Correlation: {correlation} | No messages found. We will return empty list of messages with isEnd to true", correlation, messages);
-                return (new ReadOnlyCollection<StreamMessage>(new List<StreamMessage>()), new ReadOnlyDictionary<string, int>(new Dictionary<string, int>()), true);
+                Logger.TraceFormat("Correlation: {correlation} | No messages found. No need to gap check", correlation, messages);
+                return page;
             }
             
             /*
@@ -133,13 +133,13 @@
             var gapHandlingBehaviour = DetermineGapHandlingBehaviour(xMin, maxTransactionId, correlation);
             
             // If we don't need to handle the gaps, return immediately. It should now contain no gaps are permanent gaps
-            if (gapHandlingBehaviour == GapHandelingBehaviour.None)
-                return (messages, maxAgeDict, isEnd);
+            if(gapHandlingBehaviour == GapHandelingBehaviour.None)
+                return page;
             
             // Check for any gaps between received messages and fromPositionInclusive or within the current page.
             // If this isn't the case we are sure there are no gaps and we are safe to return the messages
             if(!HasGapWithPreviousPage(messages, fromPositionInclusive, correlation) && !HasGapsWithinPage(messages, correlation))
-                return (messages, maxAgeDict, isEnd);
+                return page;
             
             Logger.TraceFormat("Correlation: {correlation} | Detected gap, initiating handling mechanism {gapHandlingBehaviour}", correlation, gapHandlingBehaviour);
                 
@@ -169,8 +169,8 @@
             if (gapHandlingBehaviour == GapHandelingBehaviour.PollXmin) 
                 return await HandleGaps(stablePage, fromPositionInclusive, maxCount, prefetch, correlation, cancellationToken)
                     .ConfigureAwait(false);
-                
-            return (stablePage.Messages, stablePage.MaxAgeDict, stablePage.IsEnd);
+
+            return stablePage;
         }
         
         private GapHandelingBehaviour DetermineGapHandlingBehaviour(ulong xMin, ulong maxTransactionId, Guid correlation)

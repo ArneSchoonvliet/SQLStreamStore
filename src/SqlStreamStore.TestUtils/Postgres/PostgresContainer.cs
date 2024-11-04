@@ -21,7 +21,8 @@ namespace SqlStreamStore.TestUtils.Postgres
                 Port = Port,
                 Username = "postgres",
                 Host = "127.0.0.1",
-                Pooling = true
+                Pooling = true,
+                MaxPoolSize = 1000
             })
         {
             _containerService = new Builder()
@@ -32,7 +33,8 @@ namespace SqlStreamStore.TestUtils.Postgres
                 .ReuseIfExists()
                 .WithEnvironment("POSTGRES_PASSWORD=password")
                 .ExposePort(Port, Port)
-                .Command("", "-c shared_buffers=128MB")
+                .Command("", "-c sha.red_buffers=4096MB")
+                .Command("", "-c max_connections=1111")
                 .Build();
         }
 
