@@ -99,7 +99,8 @@ BEGIN
 
   IF cardinality(_new_stream_messages) > 0
   THEN
-    INSERT INTO __schema__.messages (message_id,
+    INSERT INTO __schema__.messages (position,
+                                     message_id,
                                      stream_id_internal,
                                      stream_version,
                                      created_utc,
@@ -107,7 +108,7 @@ BEGIN
                                      json_data,
                                      json_metadata,
                                      transaction_id)
-    SELECT m.message_id, _stream_id_internal, _current_version + (row_number()
+    SELECT nextval('__schema__.messages_seq'), m.message_id, _stream_id_internal, _current_version + (row_number()
         over ()) :: int, _created_utc, m.type, m.json_data, m.json_metadata, pg_current_xact_id()
     FROM unnest(_new_stream_messages) m
     ON CONFLICT DO NOTHING;
