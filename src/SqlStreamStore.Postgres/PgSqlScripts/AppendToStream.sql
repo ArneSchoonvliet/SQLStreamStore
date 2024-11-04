@@ -108,7 +108,7 @@ BEGIN
                                      json_data,
                                      json_metadata,
                                      transaction_id)
-    SELECT nextval('messages_seq'), m.message_id, _stream_id_internal, _current_version + (row_number()
+    SELECT nextval('__schema__.messages_seq'), m.message_id, _stream_id_internal, _current_version + (row_number()
         over ()) :: int, _created_utc, m.type, m.json_data, m.json_metadata, pg_current_xact_id()
     FROM unnest(_new_stream_messages) m
     ON CONFLICT DO NOTHING;
