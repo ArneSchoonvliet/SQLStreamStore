@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <AssemblyName>SqlStreamStore.Postgres.Tests</AssemblyName>
     <RootNamespace>SqlStreamStore</RootNamespace>
   </PropertyGroup>
@@ -13,6 +13,5 @@
     <ProjectReference Include="..\..\src\SqlStreamStore.TestUtils\SqlStreamStore.TestUtils.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Update="Microsoft.NET.Test.Sdk" Version="17.4.1" />
   </ItemGroup>
 </Project>
