@@ -8,7 +8,9 @@
         public override string ToString()
         {
             var inProgress = Count > 0;
-            return inProgress ? string.Join(", ", this.OrderBy(x => x).Select(x => $"TransactionId: {x}")) : "No transactions in progress";
+            return inProgress 
+                ? string.Join(", ", this.OrderBy(x => x).Select(x => $"TransactionId: {x}")) 
+                : "No transactions in progress";
         }
     }
 }

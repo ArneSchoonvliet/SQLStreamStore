@@ -72,10 +72,10 @@
             {
                 Logger.DebugFormat("No gaps detected | Correlation: {correlation}", correlation);
                 LogMessages(correlation, fromPositionInclusive, messages, transactionIdDict);
-                
+
                 return (messages, maxAgeDict, isEnd);
             }
-            
+
             // Check if gaps are permanent (from rolled-back transactions) by comparing
             // transaction IDs against Xmin. If all our transactions have aged out of
             // the snapshot horizon, any gaps must be from rollbacks, not pending commits.
@@ -83,10 +83,10 @@
             {
                 Logger.DebugFormat("Gap(s) detected but they are flagged as real ones | Correlation: {correlation}", correlation);
                 LogMessages(correlation, fromPositionInclusive, messages, transactionIdDict);
-                
+
                 return (messages, maxAgeDict, isEnd);
             }
-            
+
             // Gaps might be temporary - retrieve active transactions that could fill them
             var transactions = await ReadTransactions(cancellationToken).ConfigureAwait(false);
             Logger.DebugFormat("Gap(s) detected going to poll until transactions are completed | Correlation: {correlation}", correlation);
@@ -95,7 +95,7 @@
             // Wait for all transactions that could fill the gaps to complete (commit or rollback)
             await PollUntilMessagesAreStable(transactions, correlation, cancellationToken).ConfigureAwait(false);
             Logger.DebugFormat("Gap(s) polling stopped | Correlation: {correlation}", correlation);
-            
+
             // Re-read up to the original range to avoid processing new events
             // that arrived during polling. Example: if original read returned positions 
             // 1-10 with gap at 5, we re-read 1-10 only, even if position 11 now exists.
@@ -131,7 +131,7 @@
 
             return false;
         }
-        
+
         /// <summary>
         /// Determines if detected gaps are permanent (from rolled-back transactions) or temporary
         /// (from pending transactions) by checking if transaction IDs have aged out of PostgreSQL's
@@ -155,10 +155,10 @@
         private async Task<bool> AreGapsPermanent(ReadOnlyDictionary<long, ulong> transactionIdDict, CancellationToken cancellationToken)
         {
             var xMin = await ReadXmin(cancellationToken).ConfigureAwait(false);
-            
+
             var maximumTransactionId = transactionIdDict.Max(x => x.Value);
             var safetyBuffer = _settings.GapHandlingSettings.SafetyGap;
-    
+
             // If all transactions we've seen have aged out of the snapshot,
             // any remaining gaps must be from rolled-back transactions
             return maximumTransactionId + safetyBuffer < xMin;
@@ -181,13 +181,13 @@
                     correlation);
                 return;
             }
-            
+
             var count = 0;
             var delayTime = _settings.GapHandlingSettings.InitialPollingDelay;
             var mode = PollingMode.ActiveTransactions;
             var maximumTransactionId = transactions.Max(x => x);
             var sw = Stopwatch.StartNew();
-            
+
             while(true)
             {
                 if(delayTime > 0)
@@ -225,6 +225,7 @@
                             activeTransactions.ToString());
                     }
                 }
+
                 // Phase 2: Wait for Xmin to advance past completed transactions to ensure
                 // their effects (commits or rollbacks) are visible to subsequent reads
                 if(mode == PollingMode.PollXmin)
@@ -251,7 +252,7 @@
                         xMin,
                         maximumTransactionId);
                 }
-                
+
                 // Safety valve: if we've exceeded the skip time threshold, stop polling to avoid
                 // blocking the subscription indefinitely. This means we may miss an event, but prevents
                 // deadlock scenarios from halting all event processing.
@@ -265,7 +266,7 @@
                         mode);
                     return;
                 }
-                
+
                 // Early warning system: log when polling is taking longer than expected to help
                 // diagnose potential deadlocks, slow transactions, or configuration issues
                 if(sw.ElapsedMilliseconds >= _settings.GapHandlingSettings.MinimumWarnTime)
@@ -277,7 +278,7 @@
                         sw.ElapsedMilliseconds,
                         mode);
                 }
-                
+
                 count++;
             }
         }
@@ -285,7 +286,7 @@
         private async Task<CurrentTransactions> ReadTransactions(CancellationToken cancellationToken)
         {
             var transactions = new CurrentTransactions();
-            
+
             using(var connection = await OpenConnection(cancellationToken).ConfigureAwait(false))
             using(var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
             using(var command = BuildFunctionCommand(_schema.ReadTransactions, transaction, Parameters.Name(connection.Database)))
@@ -298,7 +299,7 @@
                     transactions.Add(reader.GetFieldValue<uint>(0));
                 }
             }
-            
+
             return transactions;
         }
 
@@ -322,7 +323,7 @@
                 CancellationToken cancellationToken)
         {
             Logger.TraceFormat("'ReadAllForwards' initiated | Correlation: {correlation}", correlation);
-            
+
             var sw = Stopwatch.StartNew();
 
             using(var connection = await OpenConnection(cancellationToken).ConfigureAwait(false))
@@ -358,7 +359,7 @@
                             messages.Add(message);
                         }
                     }
-                    
+
                     Logger.TraceFormat(
                         "Query 'ReadAllForwards' took: {timeTaken}ms | Correlation: {correlation} | fromPositionInclusive: {fromPositionInclusive}, maxCount: {maxCount}, prefetch: {preFetch} | count: {messageCount}, isEnd: {isEnd}",
                         sw.ElapsedMilliseconds,
@@ -421,7 +422,7 @@
                         toPositionInclusive,
                         prefetch,
                         isEnd);
-                    
+
                     return (messages.AsReadOnly(), new ReadOnlyDictionary<string, int>(maxAgeDict), isEnd);
                 }
             }
@@ -537,7 +538,7 @@
             ReadOnlyDictionary<long, ulong> transactionIdDict = null,
             CurrentTransactions activeTransactions = null)
         {
-            if (!Logger.IsTraceEnabled()) return;
+            if(!Logger.IsTraceEnabled()) return;
 
             var messagesLog = messages.Count == 0
                 ? "No messages"
@@ -564,7 +565,7 @@
                     activeTransactions.ToString());
             }
         }
-        
+
         private enum PollingMode
         {
             ActiveTransactions = 1,
