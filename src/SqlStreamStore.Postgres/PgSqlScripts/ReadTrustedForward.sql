@@ -1,0 +1,44 @@
+CREATE OR REPLACE FUNCTION __schema__.read_trusted_forward(
+    _fromPosition   BIGINT,
+    _toPosition     BIGINT,
+    _prefetch       BOOLEAN
+)
+    RETURNS TABLE(
+                     stream_id      VARCHAR(1000),
+                     message_id     UUID,
+                     stream_version INT,
+                     "position"     BIGINT,
+                     created_utc    TIMESTAMPTZ,
+                     "type"         VARCHAR(128),
+                     transaction_id XID8,
+                     json_metadata  JSONB,
+                     json_data      JSONB,
+                     max_age        INT
+                 )
+AS $F$
+BEGIN
+    RETURN QUERY
+        WITH messages AS (
+            SELECT
+                __schema__.streams.id_original,
+                __schema__.messages.message_id,
+                __schema__.messages.stream_version,
+                __schema__.messages.position,
+                __schema__.messages.created_utc,
+                __schema__.messages.type,
+                __schema__.messages.transaction_id,
+                __schema__.messages.json_metadata,
+                (CASE _prefetch
+                     WHEN TRUE THEN __schema__.messages.json_data
+                     ELSE NULL END),
+                __schema__.streams.max_age
+            FROM __schema__.messages
+                     INNER JOIN __schema__.streams ON __schema__.messages.stream_id_internal = __schema__.streams.id_internal
+            WHERE __schema__.messages.position >= _fromPosition AND __schema__.messages.position <= _toPosition
+            ORDER BY
+                __schema__.messages.position
+        )
+        SELECT * FROM messages;
+END;
+$F$
+LANGUAGE 'plpgsql';

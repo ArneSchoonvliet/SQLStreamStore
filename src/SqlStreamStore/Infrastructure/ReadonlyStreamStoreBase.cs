@@ -456,7 +456,7 @@ namespace SqlStreamStore.Infrastructure
             var currentUtc = _getUtcNow();
             foreach(var streamMessage in readAllPage.Messages)
             {
-                if(streamMessage.StreamId.StartsWith("$"))
+                if(streamMessage.StreamId.StartsWith('$'))
                 {
                     valid.Add(streamMessage);
                     continue;

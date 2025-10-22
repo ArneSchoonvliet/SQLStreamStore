@@ -180,7 +180,7 @@
                         }
 
 
-                        await Task.Delay(Random.Shared.Next(0, 10000), cancellationToken);
+                        await Task.Delay(Random.Shared.Next(0, 1000), cancellationToken);
                         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                     }
                     catch(PostgresException ex) when(ex.IsWrongExpectedVersion())

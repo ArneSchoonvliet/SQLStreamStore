@@ -36,6 +36,7 @@
         private string ListStreamsStartingWith => GetScript(nameof(ListStreamsStartingWith));
         private string ListStreamsEndingWith => GetScript(nameof(ListStreamsEndingWith));
         private string ReadAll => GetScript(nameof(ReadAll));
+        private string ReadTrustedForward => GetScript(nameof(ReadTrustedForward));
 
         private string Read => GetScript(nameof(Read));
 
@@ -46,6 +47,7 @@
         private string ReadStreamHeadPosition => GetScript(nameof(ReadStreamHeadPosition));
 
         private string ReadXmin => GetScript(nameof(ReadXmin));
+        private string ReadTransactions => GetScript(nameof(ReadTransactions));
 
         private string ReadStreamHeadVersion => GetScript(nameof(ReadStreamHeadVersion));
 
@@ -70,6 +72,7 @@
             ListStreamsEndingWith,
             Read,
             ReadAll,
+            ReadTrustedForward,
             ReadJsonData,
             ReadHeadPosition,
             ReadStreamHeadPosition,
@@ -77,6 +80,7 @@
             ReadSchemaVersion,
             ReadStreamVersionOfMessageId,
             ReadXmin,
+            ReadTransactions,
             Scavenge,
             SetStreamMetadata);
 
