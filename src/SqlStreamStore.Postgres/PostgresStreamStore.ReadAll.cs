@@ -101,7 +101,7 @@
             // 1-10 with gap at 5, we re-read 1-10 only, even if position 11 now exists.
             var trustedMessages = await ReadTrustedMessages(fromPositionInclusive, messages[messages.Count - 1].Position, prefetch, correlation, cancellationToken).ConfigureAwait(false);
             Logger.DebugFormat("Messages are re-read and shouldn't have fake gaps anymore | Correlation: {correlation}", correlation);
-            LogMessages(correlation, fromPositionInclusive, trustedMessages.Messages, transactionIdDict);
+            LogMessages(correlation, fromPositionInclusive, trustedMessages.Messages);
 
             return trustedMessages;
         }
@@ -173,9 +173,9 @@
         /// <remarks>
         /// Implements exponential backoff and timeout safeguards to prevent indefinite blocking.
         /// </remarks>
-        private async Task PollUntilMessagesAreStable(CurrentTransactions transactions, Guid correlation, CancellationToken cancellationToken)
+        private async Task PollUntilMessagesAreStable(ActiveTransactions transactions, Guid correlation, CancellationToken cancellationToken)
         {
-            if(transactions.Count == 0)
+            if(transactions.NoActiveTransactions)
             {
                 Logger.TraceFormat("There are no active transactions, no need to poll all gaps should already be stable | Correlation: {correlation}",
                     correlation);
@@ -185,7 +185,7 @@
             var count = 0;
             var delayTime = _settings.GapHandlingSettings.InitialPollingDelay;
             var mode = PollingMode.ActiveTransactions;
-            var maximumTransactionId = transactions.Max(x => x);
+            var maximumTransactionId = transactions.MaxTransactionId;
             var sw = Stopwatch.StartNew();
 
             while(true)
@@ -205,10 +205,10 @@
                 if(mode == PollingMode.ActiveTransactions)
                 {
                     var activeTransactions = await ReadTransactions(cancellationToken).ConfigureAwait(false);
-                    if(!transactions.Intersect(activeTransactions).Any())
+                    if(!transactions.SharesTransactionsWith(activeTransactions))
                     {
                         Logger.TraceFormat(
-                            "All initial pending transactions are completed | Correlation: {correlation} | Total Polling time: {totalTime}ms, InitialTransactions: {initialTransactions}, ActiveTransactions: {activeTransactions}",
+                            "All initial active transactions are completed | Correlation: {correlation} | Total Polling time: {totalTime}ms, InitialTransactions: {initialTransactions}, ActiveTransactions: {activeTransactions}",
                             correlation,
                             sw.ElapsedMilliseconds,
                             transactions.ToString(),
@@ -218,7 +218,7 @@
                     else
                     {
                         Logger.TraceFormat(
-                            "Not all initial pending transactions are completed yet, continue polling | Correlation: {correlation} | Total Polling time: {totalTime}ms, InitialTransactions: {initialTransactions}, ActiveTransactions: {activeTransactions}",
+                            "Not all initial active transactions are completed yet, continue polling | Correlation: {correlation} | Total Polling time: {totalTime}ms, InitialTransactions: {initialTransactions}, ActiveTransactions: {activeTransactions}",
                             correlation,
                             sw.ElapsedMilliseconds,
                             transactions.ToString(),
@@ -231,7 +231,7 @@
                 if(mode == PollingMode.PollXmin)
                 {
                     var xMin = await ReadXmin(cancellationToken).ConfigureAwait(false);
-                    if(xMin > maximumTransactionId)
+                    if(transactions.IsSnapshotTransactionHigher(xMin))
                     {
                         Logger.TraceFormat(
                             "xMin has passed the maximumTransactionId all gaps should be stable now | Correlation: {correlation} | Total Polling time: {totalTime}ms, xMin: {xMin}, maximumTransactionId: {transactionId}",
@@ -283,9 +283,9 @@
             }
         }
 
-        private async Task<CurrentTransactions> ReadTransactions(CancellationToken cancellationToken)
+        private async Task<ActiveTransactions> ReadTransactions(CancellationToken cancellationToken)
         {
-            var transactions = new CurrentTransactions();
+            var transactions = new List<uint>();
 
             using(var connection = await OpenConnection(cancellationToken).ConfigureAwait(false))
             using(var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
@@ -296,11 +296,12 @@
             {
                 while(await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
+                    // Life would have been easier if pg_stat_activity (backend_xid) would return xid8 instead of xid
                     transactions.Add(reader.GetFieldValue<uint>(0));
                 }
             }
 
-            return transactions;
+            return new ActiveTransactions(transactions);
         }
 
         private async Task<ulong> ReadXmin(CancellationToken cancellationToken)
@@ -536,7 +537,7 @@
             long fromPositionInclusive,
             ReadOnlyCollection<StreamMessage> messages,
             ReadOnlyDictionary<long, ulong> transactionIdDict = null,
-            CurrentTransactions activeTransactions = null)
+            ActiveTransactions activeTransactions = null)
         {
             if(!Logger.IsTraceEnabled()) return;
 
