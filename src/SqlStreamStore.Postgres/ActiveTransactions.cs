@@ -17,7 +17,7 @@
         /// <summary>
         /// Gets the list of active transactions as 32-bit <c>xid</c> values.
         /// </summary>
-        public List<ActiveTransaction> TransactionIds { get; }
+        public IReadOnlyList<ActiveTransaction> TransactionIds { get; }
 
         /// <summary>
         /// Gets the highest (most recent) active transaction ID (<c>xid</c>)
