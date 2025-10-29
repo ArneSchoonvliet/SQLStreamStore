@@ -19,10 +19,12 @@
         public string ListStreamsEndingWith => $"{_schema}.list_streams_ending_with";
         public string Read => $"{_schema}.read";
         public string ReadAll => $"{_schema}.read_all";
+        public string ReadTrustedForward => $"{_schema}.read_trusted_forward";
         public string ReadAllHeadPosition => $"{_schema}.read_head_position";
         public string ReadStreamHeadPosition => $"{_schema}.read_stream_head_position";
         public string ReadStreamHeadVersion => $"{_schema}.read_stream_head_version";
         public string ReadXmin => $"{_schema}.read_xmin";
+        public string ReadTransactions => $"{_schema}.read_transactions";
         public string ReadJsonData => $"{_schema}.read_json_data";
         public string ReadSchemaVersion => $"{_schema}.read_schema_version";
 
