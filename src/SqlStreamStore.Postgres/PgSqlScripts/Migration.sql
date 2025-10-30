@@ -1,7 +1,6 @@
 COMMENT ON SCHEMA __schema__ IS '{ "version": 5 }';
 
-DROP FUNCTION IF EXISTS __schema__.read_all;
-CREATE OR REPLACE FUNCTION __schema__.read_all(
+CREATE OR REPLACE FUNCTION __schema__.read_all2(
     _count    INT,
     _position BIGINT,
     _forwards BOOLEAN,
