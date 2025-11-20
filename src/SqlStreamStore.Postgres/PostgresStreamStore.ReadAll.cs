@@ -118,10 +118,7 @@
             LogMessages(correlation, fromPositionInclusive, trustedMessages.Messages);
             return trustedMessages;
         }
-
-
-        private static bool HasGap(ReadOnlyCollection<StreamMessage> messages, long fromPositionInclusive) => GetGap(messages, fromPositionInclusive).HasValue;
-
+        
         /// <summary>
         /// Get the position of the first gap.
         /// A gap is detected when:
@@ -576,16 +573,16 @@
 
             if(activeTransactions == null)
             {
-                Logger.TraceFormat("Correlation: {0} | HasGaps: {1} | Messages: {2}",
+                Logger.TraceFormat("Correlation: {0} | HasGap: {1} | Messages: {2}",
                     correlation,
-                    HasGap(messages, fromPositionInclusive),
+                    GetGap(messages, fromPositionInclusive).HasValue,
                     messagesLog);
             }
             else
             {
-                Logger.TraceFormat("Correlation: {0} | HasGaps: {1} | Messages: {2} | ActiveTransactions: {3}",
+                Logger.TraceFormat("Correlation: {0} | HasGap: {1} | Messages: {2} | ActiveTransactions: {3}",
                     correlation,
-                    HasGap(messages, fromPositionInclusive),
+                    GetGap(messages, fromPositionInclusive).HasValue,
                     messagesLog,
                     activeTransactions.ToString());
             }
