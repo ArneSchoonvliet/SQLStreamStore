@@ -25,10 +25,12 @@
 
             if(messages.Count == 0)
             {
-                Logger.DebugFormat("ReadAllForwardsInternal | No messages found", correlation);
+                Logger.Debug("'ReadAllForwardsInternal' | No messages found");
                 return new ReadAllPage(fromPositionInclusive, fromPositionInclusive, isEnd, ReadDirection.Forward, readNext, Array.Empty<StreamMessage>());
             }
 
+            Logger.DebugFormat("'ReadAllForwardsInternal' | {amountOfMessages} messages found | Correlation: {correlation}", messages.Count, correlation);
+            
             // If GapHandlingSettings is null, then 'Gaps' are handled in another layer (the generic base)
             // See ReadAllForwards in the ReadonlyStreamStoreBase class
             if(_settings.GapHandlingSettings != null)
@@ -43,6 +45,9 @@
             var filteredMessages = FilterExpired(messages, maxAgeDict);
             var nextPosition = filteredMessages[filteredMessages.Count - 1].Position + 1;
 
+            Logger.DebugFormat("'ReadAllForwardsInternal' from '{fromPositionInclusive}' completed | {amountOfMessages} messages found | NextPosition: {nextPosition} | IsEnd: {isEnd} | Correlation: {correlation}", 
+                fromPositionInclusive, messages.Count, nextPosition, isEnd, correlation);
+            
             return new ReadAllPage(fromPositionInclusive, nextPosition, isEnd, ReadDirection.Forward, readNext, filteredMessages.ToArray());
         }
 
@@ -68,9 +73,12 @@
             Guid correlation,
             CancellationToken cancellationToken)
         {
-            if(!HasGaps(messages, fromPositionInclusive))
+            Logger.TraceFormat("'HandleGaps' initiated | Correlation: {correlation}", correlation);
+            var firstGap = GetGap(messages, fromPositionInclusive);
+
+            if(firstGap == null)
             {
-                Logger.DebugFormat("No gaps detected | Correlation: {correlation}", correlation);
+                Logger.DebugFormat("No gap detected | Correlation: {correlation}", correlation);
                 LogMessages(correlation, fromPositionInclusive, messages, transactionIdDict);
 
                 return (messages, maxAgeDict, isEnd);
@@ -79,46 +87,52 @@
             // Check if gaps are permanent (from rolled-back transactions) by comparing
             // transaction IDs against Xmin. If all our transactions have aged out of
             // the snapshot horizon, any gaps must be from rollbacks, not pending commits.
-            if(await AreGapsPermanent(transactionIdDict, cancellationToken))
+            if(await AreGapsPermanent(transactionIdDict, correlation, cancellationToken))
             {
-                Logger.DebugFormat("Gap(s) detected but they are flagged as real ones | Correlation: {correlation}", correlation);
+                Logger.DebugFormat("Gap detected but determined to be permanent | FirstGap: {firstGap} | Correlation: {correlation}", firstGap, correlation);
                 LogMessages(correlation, fromPositionInclusive, messages, transactionIdDict);
 
                 return (messages, maxAgeDict, isEnd);
             }
 
             // Gaps might be temporary - retrieve active transactions that could fill them
-            var transactions = await ReadTransactions(cancellationToken).ConfigureAwait(false);
-            Logger.DebugFormat("Gap(s) detected going to poll until transactions are completed | Correlation: {correlation}", correlation);
+            var transactions = await ReadTransactions(correlation, cancellationToken).ConfigureAwait(false);
+            Logger.InfoFormat("Gap detected going to poll until transactions are completed | FirstGap: {firstGap} | Correlation: {correlation}", firstGap, correlation);
             LogMessages(correlation, fromPositionInclusive, messages, transactionIdDict, transactions);
 
             // Wait for all transactions that could fill the gaps to complete (commit or rollback)
             await PollUntilMessagesAreStable(transactions, correlation, cancellationToken).ConfigureAwait(false);
-            Logger.DebugFormat("Gap(s) polling stopped | Correlation: {correlation}", correlation);
+            Logger.DebugFormat("Gap polling stopped | Correlation: {correlation}", correlation);
 
             // Re-read up to the original range to avoid processing new events
             // that arrived during polling. Example: if original read returned positions 
             // 1-10 with gap at 5, we re-read 1-10 only, even if position 11 now exists.
             var trustedMessages = await ReadTrustedMessages(fromPositionInclusive, messages[messages.Count - 1].Position, prefetch, correlation, cancellationToken).ConfigureAwait(false);
-            Logger.DebugFormat("Messages are re-read and shouldn't have fake gaps anymore | Correlation: {correlation}", correlation);
+            var newFirstGap = GetGap(trustedMessages.Messages, fromPositionInclusive);
+            
+            if(newFirstGap.HasValue)
+                Logger.InfoFormat("Messages are re-read and any remaining gaps should be permanent | FirstGap: {firstGap} | Correlation: {correlation}", newFirstGap, correlation);
+            else
+                Logger.DebugFormat("Messages are re-read and no gaps remain | Correlation: {correlation}", correlation);
+            
             LogMessages(correlation, fromPositionInclusive, trustedMessages.Messages);
-
             return trustedMessages;
         }
-
+        
         /// <summary>
-        /// Checks if there are any gaps in the message sequence.
-        /// Gaps are detected when:
+        /// Get the position of the first gap.
+        /// A gap is detected when:
         /// 1. The first message position doesn't match the expected starting position
         /// 2. Any two consecutive messages have non-sequential positions
         /// </summary>
-        private static bool HasGaps(ReadOnlyCollection<StreamMessage> messages, long fromPositionInclusive)
+        /// <returns>NULL if no gap is detected, otherwise the position of the unexpected gap</returns>
+        private static long? GetGap(ReadOnlyCollection<StreamMessage> messages, long fromPositionInclusive)
         {
             if(messages.Count == 0)
-                return false;
+                return null;
 
             if(messages[0].Position != fromPositionInclusive)
-                return true;
+                return fromPositionInclusive;
 
             for(int i = 0; i < messages.Count - 1; i++)
             {
@@ -126,10 +140,10 @@
                 var actualPosition = messages[i + 1].Position;
 
                 if(expectedNextPosition != actualPosition)
-                    return true;
+                    return expectedNextPosition;
             }
 
-            return false;
+            return null;
         }
 
         /// <summary>
@@ -152,16 +166,20 @@
         /// earlier sequence positions. Only returns true when we're certain all transactions that
         /// could fill the gaps have aged out
         /// </remarks>
-        private async Task<bool> AreGapsPermanent(ReadOnlyDictionary<long, ulong> transactionIdDict, CancellationToken cancellationToken)
+        private async Task<bool> AreGapsPermanent(ReadOnlyDictionary<long, ulong> transactionIdDict, Guid correlation, CancellationToken cancellationToken)
         {
-            var xMin = await ReadXmin(cancellationToken).ConfigureAwait(false);
+            var xMin = await ReadXmin(correlation, cancellationToken).ConfigureAwait(false);
 
             var maximumTransactionId = transactionIdDict.Max(x => x.Value);
             var safetyBuffer = _settings.GapHandlingSettings.SafetyGap;
 
             // If all transactions we've seen have aged out of the snapshot,
             // any remaining gaps must be from rolled-back transactions
-            return maximumTransactionId + safetyBuffer < xMin;
+            var agedOut = maximumTransactionId + safetyBuffer < xMin;
+            Logger.TraceFormat("'AreGapsPermanent': {agedOut} | MaximumTransactionId: {maximumTransactionId} | XMin: {xMin} | SafetyBuffer: {safetyBuffer} | Correlation: {correlation}", 
+                agedOut, maximumTransactionId, xMin, safetyBuffer, correlation);
+            
+            return agedOut;
         }
 
         /// <summary>
@@ -175,13 +193,6 @@
         /// </remarks>
         private async Task PollUntilMessagesAreStable(ActiveTransactions transactions, Guid correlation, CancellationToken cancellationToken)
         {
-            if(transactions.NoActiveTransactions)
-            {
-                Logger.TraceFormat("There are no active transactions, no need to poll all gaps should already be stable | Correlation: {correlation}",
-                    correlation);
-                return;
-            }
-
             var count = 0;
             var delayTime = _settings.GapHandlingSettings.InitialPollingDelay;
             var mode = PollingMode.ActiveTransactions;
@@ -200,14 +211,21 @@
                 {
                     delayTime += _settings.GapHandlingSettings.PollingBackoffIncrement;
                 }
+                
+                // Phase 0: Early exit because there are no active transactions
+                if(transactions.NoActiveTransactions)
+                {
+                    Logger.DebugFormat("There are no active transactions, no need to poll all gaps should already be stable | Correlation: {correlation}", correlation);
+                    return;
+                }
 
                 // Phase 1: Wait for the initial set of active transactions to complete
                 if(mode == PollingMode.ActiveTransactions)
                 {
-                    var activeTransactions = await ReadTransactions(cancellationToken).ConfigureAwait(false);
+                    var activeTransactions = await ReadTransactions(correlation, cancellationToken).ConfigureAwait(false);
                     if(!transactions.SharesTransactionsWith(activeTransactions))
                     {
-                        Logger.TraceFormat(
+                        Logger.DebugFormat(
                             "All initial active transactions are completed | Correlation: {correlation} | Total Polling time: {totalTime}ms, InitialTransactions: {initialTransactions}, ActiveTransactions: {activeTransactions}",
                             correlation,
                             sw.ElapsedMilliseconds,
@@ -230,10 +248,10 @@
                 // their effects (commits or rollbacks) are visible to subsequent reads
                 if(mode == PollingMode.PollXmin)
                 {
-                    var xMin = await ReadXmin(cancellationToken).ConfigureAwait(false);
+                    var xMin = await ReadXmin(correlation, cancellationToken).ConfigureAwait(false);
                     if(transactions.IsSnapshotTransactionHigher(xMin))
                     {
-                        Logger.TraceFormat(
+                        Logger.DebugFormat(
                             "xMin has passed the maximumTransactionId all gaps should be stable now | Correlation: {correlation} | Total Polling time: {totalTime}ms, xMin: {xMin}, maximumTransactionId: {transactionId}",
                             correlation,
                             sw.ElapsedMilliseconds,
@@ -244,8 +262,7 @@
 
                     // Xmin should normally advance once transactions complete. If it doesn't,
                     // there may be a long-running transaction holding back the snapshot horizon.
-                    // Log as warning to debug, since this shouldn't happen in normal operation.
-                    Logger.WarnFormat(
+                    Logger.TraceFormat(
                         "xMin didn't pass the maximumTransactionId yet, continue polling | Correlation: {correlation} | Total Polling time: {totalTime}ms, xMin: {xMin}, maximumTransactionId: {transactionId}",
                         correlation,
                         sw.ElapsedMilliseconds,
@@ -254,7 +271,7 @@
                 }
 
                 // Safety valve: if we've exceeded the skip time threshold, stop polling to avoid
-                // blocking the subscription indefinitely. This means we may miss an event, but prevents
+                // blocking the subscription indefinitely. This means we may miss an event but prevents
                 // deadlock scenarios from halting all event processing.
                 if(sw.ElapsedMilliseconds >= _settings.GapHandlingSettings.SkipTime)
                 {
@@ -268,7 +285,7 @@
                 }
 
                 // Early warning system: log when polling is taking longer than expected to help
-                // diagnose potential deadlocks, slow transactions, or configuration issues
+                // diagnose potential deadlocks, slow transactions
                 if(sw.ElapsedMilliseconds >= _settings.GapHandlingSettings.MinimumWarnTime)
                 {
                     Logger.WarnFormat(
@@ -283,8 +300,10 @@
             }
         }
 
-        private async Task<ActiveTransactions> ReadTransactions(CancellationToken cancellationToken)
+        private async Task<ActiveTransactions> ReadTransactions(Guid correlation, CancellationToken cancellationToken)
         {
+            Logger.TraceFormat("'ReadTransactions' initiated | Correlation: {correlation}", correlation);
+            
             var transactions = new List<uint>();
 
             using(var connection = await OpenConnection(cancellationToken).ConfigureAwait(false))
@@ -304,8 +323,10 @@
             return new ActiveTransactions(transactions);
         }
 
-        private async Task<ulong> ReadXmin(CancellationToken cancellationToken)
+        private async Task<ulong> ReadXmin(Guid correlation, CancellationToken cancellationToken)
         {
+            Logger.TraceFormat("'ReadXmin' initiated | Correlation: {correlation}", correlation);
+            
             using(var connection = await OpenConnection(cancellationToken).ConfigureAwait(false))
             using(var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
             using(var command = BuildFunctionCommand(_schema.ReadXmin, transaction))
@@ -362,7 +383,7 @@
                     }
 
                     Logger.TraceFormat(
-                        "Query 'ReadAllForwards' took: {timeTaken}ms | Correlation: {correlation} | fromPositionInclusive: {fromPositionInclusive}, maxCount: {maxCount}, prefetch: {preFetch} | count: {messageCount}, isEnd: {isEnd}",
+                        "'ReadAllForwards' query took: {timeTaken}ms | Correlation: {correlation} | fromPositionInclusive: {fromPositionInclusive}, maxCount: {maxCount}, prefetch: {preFetch} | count: {messageCount}, isEnd: {isEnd}",
                         sw.ElapsedMilliseconds,
                         correlation,
                         fromPositionInclusive,
@@ -416,7 +437,7 @@
                     }
 
                     Logger.TraceFormat(
-                        "Query 'ReadTrustedForward' took: {timeTaken}ms | Correlation: {correlation} | fromPositionInclusive: {fromPositionInclusive}, toPositionInclusive: {toPositionInclusive}, prefetch: {preFetch}, isEnd: {isEnd}",
+                        "'ReadTrustedForward' query took: {timeTaken}ms | Correlation: {correlation} | fromPositionInclusive: {fromPositionInclusive}, toPositionInclusive: {toPositionInclusive}, prefetch: {preFetch}, isEnd: {isEnd}",
                         sw.ElapsedMilliseconds,
                         correlation,
                         fromPositionInclusive,
@@ -552,16 +573,16 @@
 
             if(activeTransactions == null)
             {
-                Logger.TraceFormat("Correlation: {0} | HasGaps: {1} | Messages: {2}",
+                Logger.TraceFormat("Correlation: {0} | HasGap: {1} | Messages: {2}",
                     correlation,
-                    HasGaps(messages, fromPositionInclusive),
+                    GetGap(messages, fromPositionInclusive).HasValue,
                     messagesLog);
             }
             else
             {
-                Logger.TraceFormat("Correlation: {0} | HasGaps: {1} | Messages: {2} | ActiveTransactions: {3}",
+                Logger.TraceFormat("Correlation: {0} | HasGap: {1} | Messages: {2} | ActiveTransactions: {3}",
                     correlation,
-                    HasGaps(messages, fromPositionInclusive),
+                    GetGap(messages, fromPositionInclusive).HasValue,
                     messagesLog,
                     activeTransactions.ToString());
             }

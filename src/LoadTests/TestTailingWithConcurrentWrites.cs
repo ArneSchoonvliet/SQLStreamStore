@@ -66,7 +66,7 @@
                 Output.WriteLine("Writes finished");
 
                 var db = new List<long>();
-                ReadAllPage page = await pgStreamStore.ReadAllForwards(Position.Start, 500, false, ct);
+                ReadAllPage page = await pgStreamStore.ReadAllForwards(Position.Start, 5000, false, ct);
                 do
                 {
                     db.AddRange(page.Messages.Select(x => x.Position));
