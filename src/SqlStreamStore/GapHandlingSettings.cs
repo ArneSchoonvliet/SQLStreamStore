@@ -7,7 +7,7 @@
         public GapHandlingSettings(
             long minimumWarnTime,
             long skipTime,
-            uint safetyGap = 500,
+            uint safetyGap = 1000,
             int initialPollingDelay = 100,
             int pollingBackoffIncrement = 25,
             int pollingBackoffIntervalCount = 5)
@@ -40,8 +40,9 @@
         /// <summary>
         /// The safety buffer added to transaction IDs when checking against PostgreSQL's Xmin
         /// (oldest visible transaction). A gap is considered permanent (from a rolled-back transaction)
-        /// only if: maximumTransactionId + SafetyGap is lower than Xmin. 
-        /// Default: 500. Higher values are more conservative but may cause unnecessary polling.
+        /// only if: MaximumTransactionId + SafetyGap is lower than Xmin. 
+        /// Default: 1000. Higher values are more conservative but may cause unnecessary polling.
+        /// Should at least be equal to the maximum number of transactions that can be in progress at the same time
         /// </summary>
         public uint SafetyGap { get; }
 
