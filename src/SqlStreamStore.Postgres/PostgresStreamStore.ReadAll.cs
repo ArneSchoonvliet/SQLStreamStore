@@ -74,10 +74,11 @@
             CancellationToken cancellationToken)
         {
             Logger.TraceFormat("'HandleGaps' initiated | Correlation: {correlation}", correlation);
-            
-            if(!HasGaps(messages, fromPositionInclusive))
+            var firstGap = GetGap(messages, fromPositionInclusive);
+
+            if(firstGap == null)
             {
-                Logger.DebugFormat("No gaps detected | Correlation: {correlation}", correlation);
+                Logger.DebugFormat("No gap detected | Correlation: {correlation}", correlation);
                 LogMessages(correlation, fromPositionInclusive, messages, transactionIdDict);
 
                 return (messages, maxAgeDict, isEnd);
@@ -88,7 +89,7 @@
             // the snapshot horizon, any gaps must be from rollbacks, not pending commits.
             if(await AreGapsPermanent(transactionIdDict, correlation, cancellationToken))
             {
-                Logger.DebugFormat("Gap(s) detected but they are flagged as real ones | Correlation: {correlation}", correlation);
+                Logger.DebugFormat("Gap detected but determined to be permanent | FirstGap: {firstGap} | Correlation: {correlation}", firstGap, correlation);
                 LogMessages(correlation, fromPositionInclusive, messages, transactionIdDict);
 
                 return (messages, maxAgeDict, isEnd);
@@ -96,36 +97,45 @@
 
             // Gaps might be temporary - retrieve active transactions that could fill them
             var transactions = await ReadTransactions(correlation, cancellationToken).ConfigureAwait(false);
-            Logger.DebugFormat("Gap(s) detected going to poll until transactions are completed | Correlation: {correlation}", correlation);
+            Logger.InfoFormat("Gap detected going to poll until transactions are completed | FirstGap: {firstGap} | Correlation: {correlation}", firstGap, correlation);
             LogMessages(correlation, fromPositionInclusive, messages, transactionIdDict, transactions);
 
             // Wait for all transactions that could fill the gaps to complete (commit or rollback)
             await PollUntilMessagesAreStable(transactions, correlation, cancellationToken).ConfigureAwait(false);
-            Logger.DebugFormat("Gap(s) polling stopped | Correlation: {correlation}", correlation);
+            Logger.DebugFormat("Gap polling stopped | Correlation: {correlation}", correlation);
 
             // Re-read up to the original range to avoid processing new events
             // that arrived during polling. Example: if original read returned positions 
             // 1-10 with gap at 5, we re-read 1-10 only, even if position 11 now exists.
             var trustedMessages = await ReadTrustedMessages(fromPositionInclusive, messages[messages.Count - 1].Position, prefetch, correlation, cancellationToken).ConfigureAwait(false);
-            Logger.DebugFormat("Messages are re-read and shouldn't have fake gaps anymore | Correlation: {correlation}", correlation);
+            var newFirstGap = GetGap(trustedMessages.Messages, fromPositionInclusive);
+            
+            if(newFirstGap.HasValue)
+                Logger.InfoFormat("Messages are re-read and any remaining gaps should be permanent | FirstGap: {firstGap} | Correlation: {correlation}", newFirstGap, correlation);
+            else
+                Logger.DebugFormat("Messages are re-read and no gaps remain | Correlation: {correlation}", correlation);
+            
             LogMessages(correlation, fromPositionInclusive, trustedMessages.Messages);
-
             return trustedMessages;
         }
 
+
+        private static bool HasGap(ReadOnlyCollection<StreamMessage> messages, long fromPositionInclusive) => GetGap(messages, fromPositionInclusive).HasValue;
+
         /// <summary>
-        /// Checks if there are any gaps in the message sequence.
-        /// Gaps are detected when:
+        /// Get the position of the first gap.
+        /// A gap is detected when:
         /// 1. The first message position doesn't match the expected starting position
         /// 2. Any two consecutive messages have non-sequential positions
         /// </summary>
-        private static bool HasGaps(ReadOnlyCollection<StreamMessage> messages, long fromPositionInclusive)
+        /// <returns>NULL if no gap is detected, otherwise the position of the unexpected gap</returns>
+        private static long? GetGap(ReadOnlyCollection<StreamMessage> messages, long fromPositionInclusive)
         {
             if(messages.Count == 0)
-                return false;
+                return null;
 
             if(messages[0].Position != fromPositionInclusive)
-                return true;
+                return fromPositionInclusive;
 
             for(int i = 0; i < messages.Count - 1; i++)
             {
@@ -133,10 +143,10 @@
                 var actualPosition = messages[i + 1].Position;
 
                 if(expectedNextPosition != actualPosition)
-                    return true;
+                    return expectedNextPosition;
             }
 
-            return false;
+            return null;
         }
 
         /// <summary>
@@ -568,14 +578,14 @@
             {
                 Logger.TraceFormat("Correlation: {0} | HasGaps: {1} | Messages: {2}",
                     correlation,
-                    HasGaps(messages, fromPositionInclusive),
+                    HasGap(messages, fromPositionInclusive),
                     messagesLog);
             }
             else
             {
                 Logger.TraceFormat("Correlation: {0} | HasGaps: {1} | Messages: {2} | ActiveTransactions: {3}",
                     correlation,
-                    HasGaps(messages, fromPositionInclusive),
+                    HasGap(messages, fromPositionInclusive),
                     messagesLog,
                     activeTransactions.ToString());
             }
